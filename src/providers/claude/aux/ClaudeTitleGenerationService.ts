@@ -147,7 +147,6 @@ Generate a title for this conversation:`;
     }
   }
 
-  /** Cancels all ongoing title generations. */
   cancel(): void {
     for (const controller of this.activeGenerations.values()) {
       controller.abort();
@@ -155,13 +154,11 @@ Generate a title for this conversation:`;
     this.activeGenerations.clear();
   }
 
-  /** Truncates text to a maximum length with ellipsis. */
   private truncateText(text: string, maxLength: number): string {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + '...';
   }
 
-  /** Parses and cleans the title from response. */
   private parseTitle(responseText: string): string | null {
     const trimmed = responseText.trim();
     if (!trimmed) return null;
@@ -186,7 +183,6 @@ Generate a title for this conversation:`;
     return title || null;
   }
 
-  /** Safely invokes callback with try-catch to prevent unhandled errors. */
   private async safeCallback(
     callback: TitleGenerationCallback,
     conversationId: string,

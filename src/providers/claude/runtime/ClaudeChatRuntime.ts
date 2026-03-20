@@ -104,7 +104,6 @@ export type {
   AskUserQuestionCallback,
 } from '../../../core/runtime';
 
-type EnsureReadyOptions = ChatRuntimeEnsureReadyOptions;
 type QueryOptions = ChatRuntimeQueryOptions;
 
 function isChatMessageArray(value: unknown): value is ChatMessage[] {
@@ -324,7 +323,7 @@ export class ClaudianService implements ChatRuntime {
    *
    * @returns true if the query was (re)started, false otherwise
    */
-  async ensureReady(options?: EnsureReadyOptions): Promise<boolean> {
+  async ensureReady(options?: ChatRuntimeEnsureReadyOptions): Promise<boolean> {
     const vaultPath = getVaultPath(this.plugin.app);
 
     // Track external context paths for dynamic updates (empty list clears)
@@ -806,10 +805,6 @@ export class ClaudianService implements ChatRuntime {
     }
   }
 
-  private encodeTurnRequest(request: ChatTurnRequest): PreparedChatTurn {
-    return encodeClaudeTurn(request, this.mcpManager);
-  }
-
   private buildLegacyTurnRequest(
     prompt: string,
     images?: ImageAttachment[],
@@ -890,7 +885,7 @@ export class ClaudianService implements ChatRuntime {
       ? legacyQueryOptions
       : conversationHistoryOrQueryOptions ?? legacyQueryOptions;
     const request = this.buildLegacyTurnRequest(turnOrPrompt, images, queryOptions);
-    const encodedTurn = this.encodeTurnRequest(request);
+    const encodedTurn = this.prepareTurn(request);
 
     return {
       request,

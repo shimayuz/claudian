@@ -32,7 +32,6 @@ export type {
   InlineEditSelectionRequest,
 };
 
-/** Parses response text for <replacement> or <insertion> tag. */
 export function parseInlineEditResponse(responseText: string): InlineEditResult {
   const replacementMatch = responseText.match(/<replacement>([\s\S]*?)<\/replacement>/);
   if (replacementMatch) {

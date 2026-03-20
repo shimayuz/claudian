@@ -81,9 +81,5 @@ export interface ChatRewindResult {
 
 export type {
   ApprovalDecision,
-  BrowserSelectionContext,
-  CanvasSelectionContext,
-  EditorSelectionContext,
   ExitPlanModeCallback,
-  ImageAttachment,
 };

@@ -21,12 +21,10 @@ export class InstructionRefineService {
     this.plugin = plugin;
   }
 
-  /** Resets conversation state for a new refinement session. */
   resetConversation(): void {
     this.sessionId = null;
   }
 
-  /** Refines a raw instruction from user input. */
   async refineInstruction(
     rawInstruction: string,
     existingInstructions: string,
@@ -38,7 +36,6 @@ export class InstructionRefineService {
     return this.sendMessage(prompt, onProgress);
   }
 
-  /** Continues conversation with a follow-up message (for clarifications). */
   async continueConversation(
     message: string,
     onProgress?: RefineProgressCallback
@@ -49,7 +46,6 @@ export class InstructionRefineService {
     return this.sendMessage(message, onProgress);
   }
 
-  /** Cancels any ongoing query. */
   cancel(): void {
     if (this.abortController) {
       this.abortController.abort();
@@ -148,7 +144,6 @@ export class InstructionRefineService {
     }
   }
 
-  /** Parses response text for <instruction> tag. */
   private parseResponse(responseText: string): InstructionRefineResult {
     const instructionMatch = responseText.match(/<instruction>([\s\S]*?)<\/instruction>/);
     if (instructionMatch) {

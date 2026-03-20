@@ -1,7 +1,4 @@
-/**
- * Extracts joined text content from an SDK assistant message.
- * Shared by title generation and instruction refine services.
- */
+/** Shared by title generation and instruction refine services. */
 export function extractAssistantText(
   message: { type: string; message?: { content?: Array<{ type: string; text?: string }> } }
 ): string {
