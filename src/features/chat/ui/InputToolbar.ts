@@ -3,20 +3,20 @@ import * as path from 'path';
 
 import type { McpServerManager } from '../../../core/mcp';
 import type {
-  ClaudeModel,
-  ClaudianMcpServer,
-  EffortLevel,
-  PermissionMode,
-  ThinkingBudget,
-  UsageInfo
+  ManagedMcpServer,
+  UsageInfo,
 } from '../../../core/types';
 import {
+  type ClaudeModel,
   DEFAULT_CLAUDE_MODELS,
   EFFORT_LEVELS,
+  type EffortLevel,
   filterVisibleModelOptions,
   isAdaptiveThinkingModel,
-  THINKING_BUDGETS
-} from '../../../core/types';
+  type PermissionMode,
+  THINKING_BUDGETS,
+  type ThinkingBudget,
+} from '../../../providers/claude/types';
 import { CHECK_ICON_SVG, MCP_ICON_SVG } from '../../../shared/icons';
 import { getModelsFromEnvironment, parseEnvironmentVariables } from '../../../utils/env';
 import { filterValidPaths, findConflictingPath, isDuplicatePath, isValidDirectoryPath, validateDirectoryPath } from '../../../utils/externalContext';
@@ -755,7 +755,7 @@ export class McpServerSelector {
     }
   }
 
-  private renderServerItem(listEl: HTMLElement, server: ClaudianMcpServer) {
+  private renderServerItem(listEl: HTMLElement, server: ManagedMcpServer) {
     const itemEl = listEl.createDiv({ cls: 'claudian-mcp-selector-item' });
     itemEl.dataset.serverName = server.name;
 

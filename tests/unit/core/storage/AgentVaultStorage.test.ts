@@ -1,5 +1,5 @@
-import { AgentVaultStorage } from '@/core/storage/AgentVaultStorage';
 import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
+import { AgentVaultStorage } from '@/providers/claude/storage/AgentVaultStorage';
 
 describe('AgentVaultStorage', () => {
   let mockAdapter: jest.Mocked<VaultFileAdapter>;

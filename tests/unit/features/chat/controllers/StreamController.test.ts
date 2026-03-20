@@ -257,28 +257,28 @@ describe('StreamController - Text Content', () => {
     });
   });
 
-  describe('sdk_assistant_uuid handling', () => {
-    it('should set sdkAssistantUuid on message', async () => {
+  describe('assistant_message_id handling', () => {
+    it('should set assistantMessageId on message', async () => {
       const msg = createTestMessage();
 
       await controller.handleStreamChunk(
-        { type: 'sdk_assistant_uuid', uuid: 'asst-uuid-123' } as any,
+        { type: 'assistant_message_id', uuid: 'asst-uuid-123' } as any,
         msg
       );
 
-      expect(msg.sdkAssistantUuid).toBe('asst-uuid-123');
+      expect(msg.assistantMessageId).toBe('asst-uuid-123');
     });
 
-    it('should overwrite previous sdkAssistantUuid', async () => {
+    it('should overwrite previous assistantMessageId', async () => {
       const msg = createTestMessage();
-      msg.sdkAssistantUuid = 'old-uuid';
+      msg.assistantMessageId = 'old-uuid';
 
       await controller.handleStreamChunk(
-        { type: 'sdk_assistant_uuid', uuid: 'new-uuid' } as any,
+        { type: 'assistant_message_id', uuid: 'new-uuid' } as any,
         msg
       );
 
-      expect(msg.sdkAssistantUuid).toBe('new-uuid');
+      expect(msg.assistantMessageId).toBe('new-uuid');
     });
   });
 

@@ -448,7 +448,7 @@ export class TabManager implements TabManagerInterface {
       forkSource: { sessionId: context.sourceSessionId, resumeAt: context.resumeAt },
       // Prevent immediate SDK message load from merging duplicates with the copied messages.
       // This is in-memory only (not persisted in metadata).
-      sdkMessagesLoaded: true,
+      nativeHistoryLoaded: true,
       ...(title && { title }),
       ...(context.currentNote && { currentNote: context.currentNote }),
     });

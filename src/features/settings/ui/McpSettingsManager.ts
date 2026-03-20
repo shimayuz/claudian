@@ -1,17 +1,17 @@
 import { Notice, setIcon } from 'obsidian';
 
 import { testMcpServer } from '../../../core/mcp/McpTester';
-import { McpStorage } from '../../../core/storage';
-import type { ClaudianMcpServer, McpServerConfig, McpServerType } from '../../../core/types';
+import type { ManagedMcpServer, McpServerConfig, McpServerType } from '../../../core/types';
 import { DEFAULT_MCP_SERVER, getMcpServerType } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
+import { McpStorage } from '../../../providers/claude/storage';
 import { McpServerModal } from './McpServerModal';
 import { McpTestModal } from './McpTestModal';
 
 export class McpSettingsManager {
   private containerEl: HTMLElement;
   private plugin: ClaudianPlugin;
-  private servers: ClaudianMcpServer[] = [];
+  private servers: ManagedMcpServer[] = [];
 
   /**
    * Broadcasts MCP reload to all open Claudian views.
@@ -97,7 +97,7 @@ export class McpSettingsManager {
     }
   }
 
-  private renderServerItem(listEl: HTMLElement, server: ClaudianMcpServer) {
+  private renderServerItem(listEl: HTMLElement, server: ManagedMcpServer) {
     const itemEl = listEl.createDiv({ cls: 'claudian-mcp-item' });
     if (!server.enabled) {
       itemEl.addClass('claudian-mcp-item-disabled');
@@ -163,7 +163,7 @@ export class McpSettingsManager {
     deleteBtn.addEventListener('click', () => this.deleteServer(server));
   }
 
-  private async testServer(server: ClaudianMcpServer) {
+  private async testServer(server: ManagedMcpServer) {
     const modal = new McpTestModal(
       this.plugin.app,
       server.name,
@@ -187,7 +187,7 @@ export class McpSettingsManager {
 
   /** Rolls back on save failure; warns on reload failure (since save succeeded). */
   private async updateServerDisabledTools(
-    server: ClaudianMcpServer,
+    server: ManagedMcpServer,
     newDisabledTools: string[] | undefined
   ): Promise<void> {
     const previous = server.disabledTools ? [...server.disabledTools] : undefined;
@@ -209,7 +209,7 @@ export class McpSettingsManager {
   }
 
   private async updateDisabledTool(
-    server: ClaudianMcpServer,
+    server: ManagedMcpServer,
     toolName: string,
     enabled: boolean
   ) {
@@ -225,14 +225,14 @@ export class McpSettingsManager {
     );
   }
 
-  private async updateAllDisabledTools(server: ClaudianMcpServer, disabledTools: string[]) {
+  private async updateAllDisabledTools(server: ManagedMcpServer, disabledTools: string[]) {
     await this.updateServerDisabledTools(
       server,
       disabledTools.length > 0 ? disabledTools : undefined
     );
   }
 
-  private getServerPreview(server: ClaudianMcpServer, type: McpServerType): string {
+  private getServerPreview(server: ManagedMcpServer, type: McpServerType): string {
     if (type === 'stdio') {
       const config = server.config as { command: string; args?: string[] };
       const args = config.args?.join(' ') || '';
@@ -243,7 +243,7 @@ export class McpSettingsManager {
     }
   }
 
-  private openModal(existing: ClaudianMcpServer | null, initialType?: McpServerType) {
+  private openModal(existing: ManagedMcpServer | null, initialType?: McpServerType) {
     const modal = new McpServerModal(
       this.plugin.app,
       this.plugin,
@@ -296,7 +296,7 @@ export class McpSettingsManager {
     }
   }
 
-  private async saveServer(server: ClaudianMcpServer, existing: ClaudianMcpServer | null) {
+  private async saveServer(server: ManagedMcpServer, existing: ManagedMcpServer | null) {
     if (existing) {
       const index = this.servers.findIndex((s) => s.name === existing.name);
       if (index !== -1) {
@@ -366,7 +366,7 @@ export class McpSettingsManager {
     new Notice(message);
   }
 
-  private async toggleServer(server: ClaudianMcpServer) {
+  private async toggleServer(server: ManagedMcpServer) {
     server.enabled = !server.enabled;
     await this.plugin.storage.mcp.save(this.servers);
     await this.broadcastMcpReloadToAllViews();
@@ -374,7 +374,7 @@ export class McpSettingsManager {
     new Notice(`MCP server "${server.name}" ${server.enabled ? 'enabled' : 'disabled'}`);
   }
 
-  private async deleteServer(server: ClaudianMcpServer) {
+  private async deleteServer(server: ManagedMcpServer) {
     if (!confirm(`Delete MCP server "${server.name}"?`)) {
       return;
     }

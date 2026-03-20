@@ -3,7 +3,7 @@ import {
   createBlocklistHook,
   createVaultRestrictionHook,
   type VaultRestrictionContext,
-} from '@/core/hooks/SecurityHooks';
+} from '@/providers/claude/hooks/SecurityHooks';
 import type { PathAccessType } from '@/utils/path';
 
 describe('SecurityHooks', () => {

@@ -85,7 +85,7 @@ export class InputController {
 
   private isResumeSessionAtStillNeeded(resumeUuid: string, previousMessages: ChatMessage[]): boolean {
     for (let i = previousMessages.length - 1; i >= 0; i--) {
-      if (previousMessages[i].role === 'assistant' && previousMessages[i].sdkAssistantUuid === resumeUuid) {
+      if (previousMessages[i].role === 'assistant' && previousMessages[i].assistantMessageId === resumeUuid) {
         // Still needed only if no messages follow the resume point
         return i === previousMessages.length - 1;
       }
@@ -305,12 +305,12 @@ export class InputController {
     const conversationIdForSend = state.currentConversationId;
     if (conversationIdForSend) {
       const conv = plugin.getConversationSync(conversationIdForSend);
-      if (conv?.resumeSessionAt) {
-        if (this.isResumeSessionAtStillNeeded(conv.resumeSessionAt, state.messages.slice(0, -2))) {
-          agentService.setResumeCheckpoint(conv.resumeSessionAt);
+      if (conv?.resumeAtMessageId) {
+        if (this.isResumeSessionAtStillNeeded(conv.resumeAtMessageId, state.messages.slice(0, -2))) {
+          agentService.setResumeCheckpoint(conv.resumeAtMessageId);
         } else {
           try {
-            await plugin.updateConversation(conversationIdForSend, { resumeSessionAt: undefined });
+            await plugin.updateConversation(conversationIdForSend, { resumeAtMessageId: undefined });
           } catch {
             // Best-effort — don't block send
           }
@@ -329,12 +329,12 @@ export class InputController {
       // This prevents duplication when rebuilding context for new sessions
       const previousMessages = state.messages.slice(0, -2);
       for await (const chunk of agentService.query(preparedTurn, previousMessages)) {
-        if (chunk.type === 'sdk_user_uuid') {
-          userMsg.sdkUserUuid = chunk.uuid;
+        if (chunk.type === 'user_message_id') {
+          userMsg.userMessageId = chunk.uuid;
           continue;
         }
 
-        if (chunk.type === 'sdk_user_sent') {
+        if (chunk.type === 'user_message_sent') {
           didEnqueueToSdk = true;
           continue;
         }
@@ -415,8 +415,8 @@ export class InputController {
           }
         }
 
-        // Only clear resumeSessionAt if enqueue succeeded; preserve checkpoint on failure for retry
-        const saveExtras = didEnqueueToSdk ? { resumeSessionAt: undefined } : undefined;
+        // Only clear resumeAtMessageId if enqueue succeeded; preserve checkpoint on failure for retry
+        const saveExtras = didEnqueueToSdk ? { resumeAtMessageId: undefined } : undefined;
         await conversationController.save(true, saveExtras);
 
         const userMsgIndex = state.messages.indexOf(userMsg);

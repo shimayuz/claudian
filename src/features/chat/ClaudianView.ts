@@ -1,8 +1,9 @@
 import type { EventRef, WorkspaceLeaf } from 'obsidian';
 import { ItemView, Notice, Scope, setIcon } from 'obsidian';
 
-import { getContextWindowSize, VIEW_TYPE_CLAUDIAN } from '../../core/types';
+import { VIEW_TYPE_CLAUDIAN } from '../../core/types';
 import type ClaudianPlugin from '../../main';
+import { getContextWindowSize } from '../../providers/claude/types';
 import { LOGO_SVG } from './constants';
 import { TabBar, TabManager, updatePlanModeUI } from './tabs';
 import type { TabData, TabId } from './tabs/types';

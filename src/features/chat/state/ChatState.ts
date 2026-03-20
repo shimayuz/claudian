@@ -1,10 +1,10 @@
 import type { UsageInfo } from '../../../core/types';
+import type { PermissionMode } from '../../../providers/claude/types';
 import type {
   ChatMessage,
   ChatStateCallbacks,
   ChatStateData,
   PendingToolCall,
-  PermissionMode,
   QueuedMessage,
   ThinkingBlockState,
   TodoItem,

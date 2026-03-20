@@ -4,8 +4,9 @@
 
 import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 
-import type { SystemPromptSettings } from '../../../core/prompts/mainAgent';
-import type { ClaudeModel, EffortLevel, PermissionMode, StreamChunk } from '../../../core/types';
+import type { StreamChunk } from '../../../core/types';
+import type { SystemPromptSettings } from '../prompt';
+import type { ClaudeModel, EffortLevel, PermissionMode } from '../types';
 
 export interface TextContentBlock {
   type: 'text';

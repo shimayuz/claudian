@@ -177,7 +177,7 @@ export class MessageRenderer {
         void this.renderContent(textEl, textToShow);
         this.addUserCopyButton(msgEl, textToShow);
       }
-      if (msg.sdkUserUuid && this.isRewindEligible(allMessages, index)) {
+      if (msg.userMessageId && this.isRewindEligible(allMessages, index)) {
         if (this.rewindCallback) {
           this.addRewindButton(msgEl, msg.id);
         }
@@ -577,7 +577,7 @@ export class MessageRenderer {
   }
 
   refreshActionButtons(msg: ChatMessage, allMessages?: ChatMessage[], index?: number): void {
-    if (!msg.sdkUserUuid) return;
+    if (!msg.userMessageId) return;
     if (!this.isRewindEligible(allMessages, index)) return;
     const msgEl = this.liveMessageEls.get(msg.id);
     if (!msgEl) return;

@@ -1,7 +1,7 @@
 
-import { CC_SETTINGS_PATH,CCSettingsStorage } from '../../../../src/core/storage/CCSettingsStorage';
 import type { VaultFileAdapter } from '../../../../src/core/storage/VaultFileAdapter';
-import { createPermissionRule } from '../../../../src/core/types';
+import { CC_SETTINGS_PATH,CCSettingsStorage } from '../../../../src/providers/claude/storage/CCSettingsStorage';
+import { createPermissionRule } from '../../../../src/providers/claude/types';
 
 const mockAdapter = {
     exists: jest.fn(),

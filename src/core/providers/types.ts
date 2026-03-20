@@ -1,5 +1,12 @@
+import type ClaudianPlugin from '../../main';
 import type { CursorContext } from '../../utils/editor';
-import type { InstructionRefineResult } from '../types';
+import type { McpServerManager } from '../mcp';
+import type { ChatRuntime } from '../runtime';
+import type {
+  Conversation,
+  InstructionRefineResult,
+  ToolCallInfo,
+} from '../types';
 
 export type ProviderId = 'claude' | 'codex';
 
@@ -16,16 +23,61 @@ export interface ProviderCapabilities {
 
 export const DEFAULT_CHAT_PROVIDER_ID = 'claude' as const satisfies ProviderId;
 
-export const CLAUDE_PROVIDER_CAPABILITIES: Readonly<ProviderCapabilities> = Object.freeze({
-  providerId: 'claude',
-  supportsPersistentRuntime: true,
-  supportsNativeHistory: true,
-  supportsPlanMode: true,
-  supportsRewind: true,
-  supportsFork: true,
-  supportsProviderCommands: true,
-  reasoningControl: 'effort',
-});
+export interface CreateChatRuntimeOptions {
+  plugin: ClaudianPlugin;
+  mcpManager: McpServerManager;
+  providerId?: ProviderId;
+}
+
+export interface ProviderRegistration {
+  capabilities: ProviderCapabilities;
+  createRuntime: (options: Omit<CreateChatRuntimeOptions, 'providerId'>) => ChatRuntime;
+  createTitleGenerationService: (plugin: ClaudianPlugin) => TitleGenerationService;
+  createInstructionRefineService: (plugin: ClaudianPlugin) => InstructionRefineService;
+  createInlineEditService: (plugin: ClaudianPlugin) => InlineEditService;
+  createCliResolver: () => ProviderCliResolver;
+  historyService: ProviderConversationHistoryService;
+  taskResultInterpreter: ProviderTaskResultInterpreter;
+}
+
+// ---------------------------------------------------------------------------
+// Provider-owned boundary services
+// ---------------------------------------------------------------------------
+
+export interface ProviderCliResolver {
+  resolve(
+    hostnamePaths: Record<string, string> | undefined,
+    legacyPath: string | undefined,
+    environmentVariables: string,
+  ): string | null;
+  reset(): void;
+}
+
+export interface ProviderConversationHistoryService {
+  hydrateConversationHistory(
+    conversation: Conversation,
+    vaultPath: string | null,
+  ): Promise<void>;
+  deleteConversationSession(
+    conversation: Conversation,
+    vaultPath: string | null,
+  ): Promise<void>;
+  resolveSessionIdForConversation(conversation: Conversation | null): string | null;
+  isPendingForkConversation(conversation: Conversation): boolean;
+}
+
+export type ProviderTaskTerminalStatus = Extract<ToolCallInfo['status'], 'completed' | 'error'>;
+
+export interface ProviderTaskResultInterpreter {
+  hasAsyncLaunchMarker(toolUseResult: unknown): boolean;
+  extractAgentId(toolUseResult: unknown): string | null;
+  extractStructuredResult(toolUseResult: unknown): string | null;
+  resolveTerminalStatus(
+    toolUseResult: unknown,
+    fallbackStatus: ProviderTaskTerminalStatus,
+  ): ProviderTaskTerminalStatus;
+  extractTagValue(payload: string, tagName: string): string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Auxiliary service contracts

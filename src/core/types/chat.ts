@@ -5,7 +5,7 @@
 import type { SDKToolUseResult } from './diff';
 import type { SubagentInfo, SubagentMode, ToolCallInfo } from './tools';
 
-/** Fork origin reference: identifies the source session and resume point. */
+/** Fork origin reference: identifies the source session and checkpoint. */
 export interface ForkSource {
   sessionId: string;
   resumeAt: string;
@@ -58,10 +58,10 @@ export interface ChatMessage {
   durationSeconds?: number;
   /** Flavor word used for duration display (e.g., "Baked", "Cooked"). */
   durationFlavorWord?: string;
-  /** SDK user message UUID for rewind. */
-  sdkUserUuid?: string;
-  /** SDK assistant message UUID for resumeSessionAt. */
-  sdkAssistantUuid?: string;
+  /** Provider-native user message identifier used for rewind. */
+  userMessageId?: string;
+  /** Provider-native assistant message identifier used for rewind/fork checkpoints. */
+  assistantMessageId?: string;
 }
 
 /** Persisted conversation with messages and session state. */
@@ -74,17 +74,17 @@ export interface Conversation {
   lastResponseAt?: number;
   sessionId: string | null;
   /**
-   * Current SDK session ID for native sessions.
-   * May differ from sessionId when SDK creates a new session (session expired, API key changed).
-   * Used for loading messages from SDK storage. Falls back to sessionId if not set.
+   * Current provider session ID for provider-native history.
+   * May differ from sessionId when the provider creates a new session (session expired, auth changed).
+   * Used for loading provider-stored history. Falls back to sessionId if not set.
    */
-  sdkSessionId?: string;
+  providerSessionId?: string;
   /**
-   * Previous SDK session IDs from session rebuilds.
-   * When resume fails and SDK creates a new session, the old sdkSessionId is moved here.
+   * Previous provider session IDs from session rebuilds.
+   * When resume fails and the provider creates a new session, the old providerSessionId is moved here.
    * Used to load and merge messages from all session files for display.
    */
-  previousSdkSessionIds?: string[];
+  previousProviderSessionIds?: string[];
   messages: ChatMessage[];
   currentNote?: string;
   /** Session-specific external context paths (directories with full access). Resets on new session. */
@@ -95,19 +95,19 @@ export interface Conversation {
   titleGenerationStatus?: 'pending' | 'success' | 'failed';
   /** UI-enabled MCP servers for this session (context-saving servers activated via selector). */
   enabledMcpServers?: string[];
-  /** True if this conversation uses SDK-native storage (messages in ~/.claude/projects/). */
-  isNative?: boolean;
-  /** Timestamp of the last legacy JSONL message (used to merge SDK history). */
-  legacyCutoffAt?: number;
-  /** Internal flag to avoid reloading SDK history repeatedly. */
-  sdkMessagesLoaded?: boolean;
+  /** True if this conversation relies on provider-native history storage. */
+  usesNativeHistory?: boolean;
+  /** Timestamp of the last legacy JSONL message (used to merge provider-native history). */
+  nativeHistoryCutoffAt?: number;
+  /** Internal flag to avoid reloading provider-native history repeatedly. */
+  nativeHistoryLoaded?: boolean;
   /**
    * Cached subagent data for Task tool operations.
    * Loaded from metadata for native sessions to restore tool count and status on reload.
    */
   subagentData?: Record<string, SubagentInfo>;
-  /** Assistant UUID for resumeSessionAt after rewind. */
-  resumeSessionAt?: string;
+  /** Assistant checkpoint identifier for resumeAtMessageId after rewind. */
+  resumeAtMessageId?: string;
   /** Fork origin: source session to resume + fork from. Cleared after first SDK session init. */
   forkSource?: ForkSource;
 }
@@ -125,13 +125,12 @@ export interface ConversationMeta {
   /** Status of AI title generation. */
   titleGenerationStatus?: 'pending' | 'success' | 'failed';
   /** True if this conversation uses SDK-native storage. */
-  isNative?: boolean;
+  usesNativeHistory?: boolean;
 }
 
 /**
- * Session metadata overlay for SDK-native storage.
- * Stored in vault/.claude/sessions/{id}.meta.json
- * SDK handles message storage; this stores UI-only state.
+ * Session metadata overlay for provider-native storage.
+ * The provider handles message storage; this stores UI-only state.
  */
 export interface SessionMetadata {
   id: string;
@@ -140,38 +139,38 @@ export interface SessionMetadata {
   createdAt: number;
   updatedAt: number;
   lastResponseAt?: number;
-  /** Session ID used for SDK resume (may be cleared when invalidated). */
+  /** Session ID used for provider resume (may be cleared when invalidated). */
   sessionId?: string | null;
   /**
-   * Current SDK session ID. May differ from id when SDK creates a new session.
-   * Used to locate the correct SDK session file for message loading.
+   * Current provider session ID. May differ from id when the provider creates a new session.
+   * Used to locate the correct provider session file for message loading.
    */
-  sdkSessionId?: string;
+  providerSessionId?: string;
   /**
-   * Previous SDK session IDs from session rebuilds.
-   * When resume fails and SDK creates a new session, the old sdkSessionId is moved here.
+   * Previous provider session IDs from session rebuilds.
+   * When resume fails and the provider creates a new session, the old providerSessionId is moved here.
    * Used to load and merge messages from all session files for display.
    */
-  previousSdkSessionIds?: string[];
+  previousProviderSessionIds?: string[];
   currentNote?: string;
   externalContextPaths?: string[];
   enabledMcpServers?: string[];
   usage?: UsageInfo;
-  /** Timestamp of the last legacy JSONL message (used to merge SDK history). */
-  legacyCutoffAt?: number;
+  /** Timestamp of the last legacy JSONL message (used to merge provider-native history). */
+  nativeHistoryCutoffAt?: number;
   /**
    * Subagent data for Task tool operations.
    * Maps toolUseId to subagent info (tool count, status, result).
-   * Stored here because SDK session files don't preserve this Claudian-specific data.
+   * Stored here because provider-native session files do not preserve this UI-level data.
    */
   subagentData?: Record<string, SubagentInfo>;
-  /** Assistant UUID for resumeSessionAt after rewind. */
-  resumeSessionAt?: string;
+  /** Assistant checkpoint identifier for resumeAtMessageId after rewind. */
+  resumeAtMessageId?: string;
   /** Fork origin: source session to resume + fork from. Cleared after first SDK session init. */
   forkSource?: ForkSource;
 }
 
-/** Normalized stream chunk from the Claude Agent SDK. */
+/** Normalized stream chunk emitted by the active provider runtime. */
 export type StreamChunk =
   | { type: 'text'; content: string; parentToolUseId?: string | null }
   | { type: 'thinking'; content: string; parentToolUseId?: string | null }
@@ -182,9 +181,9 @@ export type StreamChunk =
   | { type: 'done' }
   | { type: 'usage'; usage: UsageInfo; sessionId?: string | null }
   | { type: 'compact_boundary' }
-  | { type: 'sdk_user_uuid'; uuid: string }
-  | { type: 'sdk_user_sent'; uuid: string }
-  | { type: 'sdk_assistant_uuid'; uuid: string }
+  | { type: 'user_message_id'; uuid: string }
+  | { type: 'user_message_sent'; uuid: string }
+  | { type: 'assistant_message_id'; uuid: string }
   | { type: 'context_window_update'; contextWindow: number };
 
 /** Context window usage information. */

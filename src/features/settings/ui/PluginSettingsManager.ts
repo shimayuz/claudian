@@ -1,7 +1,7 @@
 import { Notice, setIcon } from 'obsidian';
 
-import type { ClaudianPlugin as ClaudianPluginType } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
+import type { ClaudianPlugin as ClaudianPluginType } from '../../../providers/claude/types';
 
 export class PluginSettingsManager {
   private containerEl: HTMLElement;

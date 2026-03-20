@@ -1,10 +1,10 @@
 
 import {
-  buildPermissionUpdates,
   getActionDescription,
   getActionPattern,
   matchesRulePattern,
 } from '../../../../src/core/security/ApprovalManager';
+import { buildPermissionUpdates } from '../../../../src/providers/claude/security/ClaudePermissionUpdates';
 
 describe('getActionPattern', () => {
   it('extracts command from Bash tool input', () => {

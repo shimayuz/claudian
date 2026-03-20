@@ -2359,13 +2359,13 @@ describe('ClaudianService', () => {
         'test', undefined, '/mock/vault/path', '/usr/local/bin/claude'
       );
 
-      // Consume the sdk_user_uuid chunk yielded before handler registration
+      // Consume the user_message_id chunk yielded before handler registration
       const firstChunk = await gen.next();
-      expect(firstChunk.value.type).toBe('sdk_user_uuid');
+      expect(firstChunk.value.type).toBe('user_message_id');
 
-      // Consume the sdk_user_sent chunk yielded after enqueue succeeds
+      // Consume the user_message_sent chunk yielded after enqueue succeeds
       const sentChunk = await gen.next();
-      expect(sentChunk.value.type).toBe('sdk_user_sent');
+      expect(sentChunk.value.type).toBe('user_message_sent');
 
       const iterPromise = gen.next();
       await new Promise(resolve => setTimeout(resolve, 10));
@@ -2415,14 +2415,14 @@ describe('ClaudianService', () => {
         'test', undefined, '/mock/vault/path', '/usr/local/bin/claude'
       );
 
-      // Consume the sdk_user_uuid chunk yielded before handler registration
+      // Consume the user_message_id chunk yielded before handler registration
       const uuidChunk = await gen.next();
-      expect(uuidChunk.value.type).toBe('sdk_user_uuid');
+      expect(uuidChunk.value.type).toBe('user_message_id');
 
       const chunks: any[] = [];
-      // Consume the sdk_user_sent chunk yielded after enqueue succeeds
+      // Consume the user_message_sent chunk yielded after enqueue succeeds
       const sentChunk = await gen.next();
-      expect(sentChunk.value.type).toBe('sdk_user_sent');
+      expect(sentChunk.value.type).toBe('user_message_sent');
 
       const iterPromise = gen.next();
       await new Promise(resolve => setTimeout(resolve, 10));
@@ -2482,13 +2482,13 @@ describe('ClaudianService', () => {
         'test', undefined, '/mock/vault/path', '/usr/local/bin/claude'
       );
 
-      // Consume the sdk_user_uuid chunk yielded before handler registration
+      // Consume the user_message_id chunk yielded before handler registration
       const uuidChunk = await gen.next();
-      expect(uuidChunk.value.type).toBe('sdk_user_uuid');
+      expect(uuidChunk.value.type).toBe('user_message_id');
 
-      // Consume the sdk_user_sent chunk yielded after enqueue succeeds
+      // Consume the user_message_sent chunk yielded after enqueue succeeds
       const sentChunk = await gen.next();
-      expect(sentChunk.value.type).toBe('sdk_user_sent');
+      expect(sentChunk.value.type).toBe('user_message_sent');
 
       const iterPromise = gen.next();
       await new Promise(resolve => setTimeout(resolve, 10));
@@ -3248,10 +3248,10 @@ describe('ClaudianService', () => {
       expect((service as any).pendingResumeAt).toBeUndefined();
     });
 
-    it('treats conversation as not pending when sdkSessionId is set', () => {
+    it('treats conversation as not pending when providerSessionId is set', () => {
       const conv = {
         sessionId: null as string | null,
-        sdkSessionId: 'sdk-session-xyz',
+        providerSessionId: 'sdk-session-xyz',
         forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid-123' },
       };
 

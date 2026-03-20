@@ -1,5 +1,5 @@
-import { McpStorage } from '@/core/storage';
 import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
+import { McpStorage } from '@/providers/claude/storage';
 
 /** Mock adapter with exposed store for test assertions. */
 type MockAdapter = VaultFileAdapter & { _store: Record<string, string> };

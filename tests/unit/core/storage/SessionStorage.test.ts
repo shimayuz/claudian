@@ -1,6 +1,6 @@
-import { SESSIONS_PATH,SessionStorage } from '@/core/storage/SessionStorage';
 import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
 import type { Conversation, SessionMetadata, UsageInfo } from '@/core/types';
+import { SESSIONS_PATH, SessionStorage } from '@/providers/claude/storage/SessionStorage';
 
 describe('SessionStorage', () => {
   let mockAdapter: jest.Mocked<VaultFileAdapter>;
@@ -846,10 +846,10 @@ describe('SessionStorage', () => {
 
       // Should be sorted by lastResponseAt/updatedAt descending
       expect(metas[0].id).toBe('native-1'); // updatedAt: 1700002000
-      expect(metas[0].isNative).toBe(true);
+      expect(metas[0].usesNativeHistory).toBe(true);
 
       expect(metas[1].id).toBe('legacy-1'); // updatedAt: 1700001000
-      expect(metas[1].isNative).toBeUndefined();
+      expect(metas[1].usesNativeHistory).toBeUndefined();
     });
 
     it('legacy takes precedence over native with same ID', async () => {
@@ -878,10 +878,10 @@ describe('SessionStorage', () => {
 
       expect(metas).toHaveLength(1);
       expect(metas[0].title).toBe('Legacy Version');
-      expect(metas[0].isNative).toBeUndefined();
+      expect(metas[0].usesNativeHistory).toBeUndefined();
     });
 
-    it('native sessions have isNative flag and default preview', async () => {
+    it('native sessions have usesNativeHistory flag and default preview', async () => {
       mockAdapter.listFiles.mockResolvedValue([
         '.claude/sessions/native-only.meta.json',
       ]);
@@ -898,7 +898,7 @@ describe('SessionStorage', () => {
       const metas = await storage.listAllConversations();
 
       expect(metas).toHaveLength(1);
-      expect(metas[0].isNative).toBe(true);
+      expect(metas[0].usesNativeHistory).toBe(true);
       expect(metas[0].preview).toBe('SDK session');
       expect(metas[0].messageCount).toBe(0);
     });
@@ -1054,8 +1054,8 @@ describe('SessionStorage', () => {
     });
   });
 
-  describe('toSessionMetadata - resumeSessionAt', () => {
-    it('includes resumeSessionAt when set', () => {
+  describe('toSessionMetadata - resumeAtMessageId', () => {
+    it('includes resumeAtMessageId when set', () => {
       const conversation: Conversation = {
         id: 'conv-rewind',
         title: 'Rewind Test',
@@ -1063,15 +1063,15 @@ describe('SessionStorage', () => {
         updatedAt: 1700001000,
         sessionId: 'sdk-session',
         messages: [],
-        resumeSessionAt: 'assistant-uuid-123',
+        resumeAtMessageId: 'assistant-uuid-123',
       };
 
       const metadata = storage.toSessionMetadata(conversation);
 
-      expect(metadata.resumeSessionAt).toBe('assistant-uuid-123');
+      expect(metadata.resumeAtMessageId).toBe('assistant-uuid-123');
     });
 
-    it('omits resumeSessionAt when not set', () => {
+    it('omits resumeAtMessageId when not set', () => {
       const conversation: Conversation = {
         id: 'conv-no-rewind',
         title: 'No Rewind',
@@ -1083,7 +1083,7 @@ describe('SessionStorage', () => {
 
       const metadata = storage.toSessionMetadata(conversation);
 
-      expect(metadata.resumeSessionAt).toBeUndefined();
+      expect(metadata.resumeAtMessageId).toBeUndefined();
     });
   });
 
@@ -1106,7 +1106,7 @@ describe('SessionStorage', () => {
         updatedAt: 1700001000,
         lastResponseAt: 1700000900,
         sessionId: 'sdk-session',
-        sdkSessionId: 'current-sdk-session',
+        providerSessionId: 'current-sdk-session',
         messages: [
           { id: 'msg-1', role: 'user', content: 'Hello', timestamp: 1700000100 },
         ],
@@ -1115,7 +1115,7 @@ describe('SessionStorage', () => {
         enabledMcpServers: ['mcp-server'],
         usage,
         titleGenerationStatus: 'success',
-        legacyCutoffAt: 1700000050,
+        nativeHistoryCutoffAt: 1700000050,
       };
 
       const metadata = storage.toSessionMetadata(conversation);
@@ -1126,8 +1126,8 @@ describe('SessionStorage', () => {
       expect(metadata.updatedAt).toBe(1700001000);
       expect(metadata.lastResponseAt).toBe(1700000900);
       expect(metadata.sessionId).toBe('sdk-session');
-      expect(metadata.sdkSessionId).toBe('current-sdk-session');
-      expect(metadata.legacyCutoffAt).toBe(1700000050);
+      expect(metadata.providerSessionId).toBe('current-sdk-session');
+      expect(metadata.nativeHistoryCutoffAt).toBe(1700000050);
       expect(metadata.currentNote).toBe('notes/test.md');
       expect(metadata.externalContextPaths).toEqual(['/external/path']);
       expect(metadata.enabledMcpServers).toEqual(['mcp-server']);

@@ -13,55 +13,17 @@ export {
   VIEW_TYPE_CLAUDIAN,
 } from './chat';
 
-// Model types
-export {
-  type ClaudeModel,
-  CONTEXT_WINDOW_1M,
-  CONTEXT_WINDOW_STANDARD,
-  DEFAULT_CLAUDE_MODELS,
-  DEFAULT_EFFORT_LEVEL,
-  DEFAULT_THINKING_BUDGET,
-  EFFORT_LEVELS,
-  type EffortLevel,
-  filterVisibleModelOptions,
-  getContextWindowSize,
-  isAdaptiveThinkingModel,
-  normalizeVisibleModelVariant,
-  THINKING_BUDGETS,
-  type ThinkingBudget,
-} from './models';
-
-// SDK types
-export { type SDKMessage } from './sdk';
-
-// Settings types
+// Settings and command types
 export {
   type ApprovalDecision,
-  type CCPermissions,
-  type CCSettings,
-  type ClaudianSettings,
-  type CliPlatformKey,
-  createPermissionRule,
-  DEFAULT_CC_PERMISSIONS,
-  DEFAULT_CC_SETTINGS,
-  DEFAULT_SETTINGS,
   type EnvSnippet,
   getBashToolBlockedCommands,
-  getCliPlatformKey,  // Kept for migration
   getCurrentPlatformBlockedCommands,
   getCurrentPlatformKey,
   getDefaultBlockedCommands,
-  type HostnameCliPaths,
   type InstructionRefineResult,
   type KeyboardNavigationSettings,
-  type LegacyPermission,
-  legacyPermissionsToCCPermissions,
-  legacyPermissionToCCRule,
-  parseCCPermissionRule,
-  type PermissionMode,
-  type PermissionRule,
   type PlatformBlockedCommands,
-  type PlatformCliPaths,  // Kept for migration
   type SlashCommand,
   type TabBarPosition,
 } from './settings';
@@ -93,11 +55,11 @@ export {
 
 // MCP types
 export {
-  type ClaudianMcpConfigFile,
-  type ClaudianMcpServer,
   DEFAULT_MCP_SERVER,
   getMcpServerType,
   isValidMcpServerConfig,
+  type ManagedMcpConfigFile,
+  type ManagedMcpServer,
   type McpConfigFile,
   type McpHttpServerConfig,
   type McpServerConfig,
@@ -106,19 +68,3 @@ export {
   type McpStdioServerConfig,
   type ParsedMcpConfig,
 } from './mcp';
-
-// Plugin types
-export {
-  type ClaudianPlugin,
-  type InstalledPluginEntry,
-  type InstalledPluginsFile,
-  type PluginScope,
-} from './plugins';
-
-// Agent types
-export {
-  AGENT_PERMISSION_MODES,
-  type AgentDefinition,
-  type AgentFrontmatter,
-  type AgentPermissionMode,
-} from './agent';

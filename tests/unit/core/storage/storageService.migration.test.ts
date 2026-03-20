@@ -1,7 +1,8 @@
 import type { Plugin } from 'obsidian';
 
-import { StorageService } from '@/core/storage';
-import { DEFAULT_SETTINGS, type SlashCommand } from '@/core/types';
+import type { SlashCommand } from '@/core/types';
+import { StorageService } from '@/providers/claude/storage';
+import { DEFAULT_SETTINGS } from '@/providers/claude/types';
 
 type AdapterOptions = {
   shouldFailWrite?: (path: string) => boolean;

@@ -13,7 +13,6 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 
-import { extractToolResultContent } from '../../../core/sdk/toolResultContent';
 import { extractResolvedAnswers, extractResolvedAnswersFromResultText } from '../../../core/tools';
 import { isSubagentToolName, TOOL_ASK_USER_QUESTION } from '../../../core/tools/toolNames';
 import type {
@@ -29,6 +28,7 @@ import { extractContentBeforeXmlContext } from '../../../utils/context';
 import { extractDiffData } from '../../../utils/diff';
 import { isCompactionCanceledStderr, isInterruptSignalText } from '../../../utils/interrupt';
 import { extractFinalResultFromSubagentJsonl } from '../../../utils/subagentJsonl';
+import { extractToolResultContent } from '../sdk/toolResultContent';
 
 export interface SDKSessionReadResult {
   messages: SDKNativeMessage[];
@@ -622,8 +622,8 @@ export function parseSDKMessageToChat(
     toolCalls: sdkMsg.type === 'assistant' ? extractToolCalls(content, toolResults) : undefined,
     contentBlocks: sdkMsg.type === 'assistant' ? mapContentBlocks(content) : undefined,
     images,
-    ...(sdkMsg.type === 'user' && sdkMsg.uuid && { sdkUserUuid: sdkMsg.uuid }),
-    ...(sdkMsg.type === 'assistant' && sdkMsg.uuid && { sdkAssistantUuid: sdkMsg.uuid }),
+    ...(sdkMsg.type === 'user' && sdkMsg.uuid && { userMessageId: sdkMsg.uuid }),
+    ...(sdkMsg.type === 'assistant' && sdkMsg.uuid && { assistantMessageId: sdkMsg.uuid }),
     ...(isInterrupt && { isInterrupt: true }),
     ...(isRebuiltContext && { isRebuiltContext: true }),
   };
@@ -755,11 +755,11 @@ function isSystemInjectedMessage(sdkMsg: SDKNativeMessage): boolean {
 /**
  * After rewind + follow-up, the JSONL forms a tree via parentUuid. Walks backward
  * from the newest branch leaf to collect only active entries. Without branching,
- * resumeSessionAt truncates the linear chain at that UUID.
+ * resumeAtMessageId truncates the linear chain at that UUID.
  */
 export function filterActiveBranch(
   entries: SDKNativeMessage[],
-  resumeSessionAt?: string
+  resumeAtMessageId?: string
 ): SDKNativeMessage[] {
   if (entries.length === 0) return [];
 
@@ -926,13 +926,13 @@ export function filterActiveBranch(
   if (hasBranching) {
     leaf = latestLeaf;
 
-    // When resumeSessionAt is also set (rewind on the latest branch without follow-up),
+    // When resumeAtMessageId is also set (rewind on the latest branch without follow-up),
     // truncate at that point instead of using the full branch leaf
-    if (resumeSessionAt && leaf?.uuid && byUuid.has(resumeSessionAt)) {
-      // Check if resumeSessionAt is an ancestor of the leaf — if so, truncate there
+    if (resumeAtMessageId && leaf?.uuid && byUuid.has(resumeAtMessageId)) {
+      // Check if resumeAtMessageId is an ancestor of the leaf — if so, truncate there
       let current: SDKNativeMessage | undefined = leaf;
       while (current?.uuid) {
-        if (current.uuid === resumeSessionAt) {
+        if (current.uuid === resumeAtMessageId) {
           leaf = current;
           break;
         }
@@ -940,8 +940,8 @@ export function filterActiveBranch(
         current = ep ? byUuid.get(ep) : undefined;
       }
     }
-  } else if (resumeSessionAt) {
-    leaf = byUuid.get(resumeSessionAt);
+  } else if (resumeAtMessageId) {
+    leaf = byUuid.get(resumeAtMessageId);
   } else {
     return convEntries;
   }
@@ -956,7 +956,7 @@ export function filterActiveBranch(
     current = ep ? byUuid.get(ep) : undefined;
   }
 
-  // When no real branching was detected but resumeSessionAt truncated,
+  // When no real branching was detected but resumeAtMessageId truncated,
   // the active set only has the chain up to the leaf. For no-branching
   // with truncation, this is correct. For branching, we also need to
   // include sibling entries that are part of the same turn (parallel tool
@@ -1057,8 +1057,8 @@ function mergeAssistantMessage(target: ChatMessage, source: ChatMessage): void {
     target.contentBlocks = [...(target.contentBlocks || []), ...source.contentBlocks];
   }
 
-  if (source.sdkAssistantUuid) {
-    target.sdkAssistantUuid = source.sdkAssistantUuid;
+  if (source.assistantMessageId) {
+    target.assistantMessageId = source.assistantMessageId;
   }
 }
 
@@ -1172,7 +1172,7 @@ function buildAsyncSubagentInfo(
 export async function loadSDKSessionMessages(
   vaultPath: string,
   sessionId: string,
-  resumeSessionAt?: string
+  resumeAtMessageId?: string
 ): Promise<SDKSessionLoadResult> {
   const result = await readSDKSession(vaultPath, sessionId);
 
@@ -1180,7 +1180,7 @@ export async function loadSDKSessionMessages(
     return { messages: [], skippedLines: result.skippedLines, error: result.error };
   }
 
-  const filteredEntries = filterActiveBranch(result.messages, resumeSessionAt);
+  const filteredEntries = filterActiveBranch(result.messages, resumeAtMessageId);
 
   const toolResults = collectToolResults(filteredEntries);
   const toolUseResults = collectStructuredPatchResults(filteredEntries);

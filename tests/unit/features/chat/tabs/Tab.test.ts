@@ -2157,7 +2157,7 @@ describe('Tab - handleForkRequest', () => {
 
     tab.state.isStreaming = true;
     tab.state.messages = [
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, sdkUserUuid: 'user-u' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, userMessageId: 'user-u' },
     ];
 
     await forkCallback('u1');
@@ -2174,7 +2174,7 @@ describe('Tab - handleForkRequest', () => {
     expect(mockNotice).toHaveBeenCalledWith('Fork failed: Message not found');
   });
 
-  it('should show notice when user message has no sdkUserUuid', async () => {
+  it('should show notice when user message has no userMessageId', async () => {
     const { tab, forkCallback, forkRequestCallback } = setupForkTest();
 
     tab.state.messages = [
@@ -2192,8 +2192,8 @@ describe('Tab - handleForkRequest', () => {
 
     // User message without a following assistant response with UUID
     tab.state.messages = [
-      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u' },
+      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u' },
       // No assistant response after u1
     ];
 
@@ -2210,9 +2210,9 @@ describe('Tab - handleForkRequest', () => {
     const { tab, forkCallback, forkRequestCallback } = setupForkTest({ plugin });
 
     tab.state.messages = [
-      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
+      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
     ];
     // No service and no conversation
     tab.service = null;
@@ -2233,11 +2233,11 @@ describe('Tab - handleForkRequest', () => {
     const { tab, forkCallback, forkRequestCallback } = setupForkTest({ plugin });
 
     tab.state.messages = [
-      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
-      { id: 'u2', role: 'user', content: 'world', timestamp: 4, sdkUserUuid: 'user-u2' },
-      { id: 'a2', role: 'assistant', content: 'resp2', timestamp: 5, sdkAssistantUuid: 'asst-2' },
+      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
+      { id: 'u2', role: 'user', content: 'world', timestamp: 4, userMessageId: 'user-u2' },
+      { id: 'a2', role: 'assistant', content: 'resp2', timestamp: 5, assistantMessageId: 'asst-2' },
     ];
 
     // Service has a session ID
@@ -2266,16 +2266,16 @@ describe('Tab - handleForkRequest', () => {
   it('should fall back to conversation session ID when service has none', async () => {
     const plugin = createMockPlugin({
       getConversationSync: jest.fn().mockReturnValue({
-        sdkSessionId: 'conv-session-xyz',
+        providerSessionId: 'conv-session-xyz',
         title: 'Fallback Chat',
       }),
     });
     const { tab, forkCallback, forkRequestCallback } = setupForkTest({ plugin });
 
     tab.state.messages = [
-      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
+      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
     ];
     tab.service = null;
     tab.conversationId = 'conv-1';
@@ -2293,11 +2293,11 @@ describe('Tab - handleForkRequest', () => {
     });
     const { tab, forkCallback, forkRequestCallback } = setupForkTest({ plugin });
 
-    const originalMsg = { id: 'a0', role: 'assistant' as const, content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' };
+    const originalMsg = { id: 'a0', role: 'assistant' as const, content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' };
     tab.state.messages = [
       originalMsg,
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
     ];
     tab.service = { getSessionId: jest.fn().mockReturnValue('session-1'), resolveSessionIdForFork: jest.fn().mockReturnValue('session-1') } as any;
     tab.conversationId = 'conv-1';
@@ -2317,8 +2317,8 @@ describe('Tab - handleForkRequest', () => {
     const { tab, forkCallback, forkRequestCallback } = setupForkTest({ plugin });
 
     tab.state.messages = [
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, sdkUserUuid: 'user-u1' },
-      { id: 'a1', role: 'assistant', content: 'hi', timestamp: 2, sdkAssistantUuid: 'asst-1' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, userMessageId: 'user-u1' },
+      { id: 'a1', role: 'assistant', content: 'hi', timestamp: 2, assistantMessageId: 'asst-1' },
     ];
     tab.service = { getSessionId: jest.fn().mockReturnValue('session-1'), resolveSessionIdForFork: jest.fn().mockReturnValue('session-1') } as any;
     tab.conversationId = 'conv-1';
@@ -2330,7 +2330,7 @@ describe('Tab - handleForkRequest', () => {
     expect(mockNotice).toHaveBeenCalled();
   });
 
-  it('should fall back to conversation forkSource.sessionId when no sessionId or sdkSessionId', async () => {
+  it('should fall back to conversation forkSource.sessionId when no sessionId or providerSessionId', async () => {
     const plugin = createMockPlugin({
       getConversationSync: jest.fn().mockReturnValue({
         title: 'Nested Fork',
@@ -2340,9 +2340,9 @@ describe('Tab - handleForkRequest', () => {
     const { tab, forkCallback, forkRequestCallback } = setupForkTest({ plugin });
 
     tab.state.messages = [
-      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
+      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
     ];
     tab.service = null;
     tab.conversationId = 'conv-1';
@@ -2358,16 +2358,16 @@ describe('Tab - handleForkRequest', () => {
     const plugin = createMockPlugin({
       getConversationSync: jest.fn().mockReturnValue({
         title: 'Test',
-        sdkSessionId: 'conv-session',
+        providerSessionId: 'conv-session',
         sessionId: 'old-session',
       }),
     });
     const { tab, forkCallback, forkRequestCallback } = setupForkTest({ plugin });
 
     tab.state.messages = [
-      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
+      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
     ];
     tab.service = { getSessionId: jest.fn().mockReturnValue('service-session'), resolveSessionIdForFork: jest.fn().mockReturnValue('service-session') } as any;
     tab.conversationId = 'conv-1';
@@ -2386,9 +2386,9 @@ describe('Tab - handleForkRequest', () => {
     const { tab, forkCallback, forkRequestCallback } = setupForkTest({ plugin });
 
     tab.state.messages = [
-      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u1' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
+      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u1' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
     ];
     tab.service = { getSessionId: jest.fn().mockReturnValue('session-1'), resolveSessionIdForFork: jest.fn().mockReturnValue('session-1') } as any;
     tab.conversationId = 'conv-1';
@@ -2450,11 +2450,11 @@ describe('Tab - handleForkAll (via /fork command)', () => {
     const { tab, onForkAll, forkRequestCallback } = setupForkAllTest({ plugin });
 
     tab.state.messages = [
-      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u1' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
-      { id: 'u2', role: 'user', content: 'world', timestamp: 4, sdkUserUuid: 'user-u2' },
-      { id: 'a2', role: 'assistant', content: 'resp2', timestamp: 5, sdkAssistantUuid: 'asst-2' },
+      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u1' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
+      { id: 'u2', role: 'user', content: 'world', timestamp: 4, userMessageId: 'user-u2' },
+      { id: 'a2', role: 'assistant', content: 'resp2', timestamp: 5, assistantMessageId: 'asst-2' },
     ];
     tab.service = { getSessionId: jest.fn().mockReturnValue('session-abc'), resolveSessionIdForFork: jest.fn().mockReturnValue('session-abc') } as any;
     tab.conversationId = 'conv-1';
@@ -2484,13 +2484,13 @@ describe('Tab - handleForkAll (via /fork command)', () => {
     const { tab, onForkAll, forkRequestCallback } = setupForkAllTest({ plugin });
 
     tab.state.messages = [
-      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u1' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
-      { id: 'u2', role: 'user', content: 'world', timestamp: 4, sdkUserUuid: 'user-u2' },
-      { id: 'a2', role: 'assistant', content: 'resp2', timestamp: 5, sdkAssistantUuid: 'asst-2' },
-      { id: 'u3', role: 'user', content: 'more', timestamp: 6, sdkUserUuid: 'user-u3' },
-      { id: 'int-1', role: 'user', content: '[Request interrupted by user]', timestamp: 7, sdkUserUuid: 'user-int', isInterrupt: true },
+      { id: 'a0', role: 'assistant', content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u1' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
+      { id: 'u2', role: 'user', content: 'world', timestamp: 4, userMessageId: 'user-u2' },
+      { id: 'a2', role: 'assistant', content: 'resp2', timestamp: 5, assistantMessageId: 'asst-2' },
+      { id: 'u3', role: 'user', content: 'more', timestamp: 6, userMessageId: 'user-u3' },
+      { id: 'int-1', role: 'user', content: '[Request interrupted by user]', timestamp: 7, userMessageId: 'user-int', isInterrupt: true },
     ];
     tab.service = { getSessionId: jest.fn().mockReturnValue('session-abc'), resolveSessionIdForFork: jest.fn().mockReturnValue('session-abc') } as any;
     tab.conversationId = 'conv-1';
@@ -2513,8 +2513,8 @@ describe('Tab - handleForkAll (via /fork command)', () => {
 
     tab.state.isStreaming = true;
     tab.state.messages = [
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 2, sdkAssistantUuid: 'asst-1' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 2, assistantMessageId: 'asst-1' },
     ];
 
     await onForkAll();
@@ -2534,11 +2534,11 @@ describe('Tab - handleForkAll (via /fork command)', () => {
     expect(forkRequestCallback).not.toHaveBeenCalled();
   });
 
-  it('should show notice when no assistant message has sdkAssistantUuid', async () => {
+  it('should show notice when no assistant message has assistantMessageId', async () => {
     const { tab, onForkAll, forkRequestCallback } = setupForkAllTest();
 
     tab.state.messages = [
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, sdkUserUuid: 'user-u' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, userMessageId: 'user-u' },
       { id: 'a1', role: 'assistant', content: 'resp', timestamp: 2 },
     ];
 
@@ -2555,8 +2555,8 @@ describe('Tab - handleForkAll (via /fork command)', () => {
     const { tab, onForkAll, forkRequestCallback } = setupForkAllTest({ plugin });
 
     tab.state.messages = [
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 2, sdkAssistantUuid: 'asst-1' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 2, assistantMessageId: 'asst-1' },
     ];
     tab.service = null;
 
@@ -2569,15 +2569,15 @@ describe('Tab - handleForkAll (via /fork command)', () => {
   it('should fall back to conversation session ID when service has none', async () => {
     const plugin = createMockPlugin({
       getConversationSync: jest.fn().mockReturnValue({
-        sdkSessionId: 'conv-session-xyz',
+        providerSessionId: 'conv-session-xyz',
         title: 'Fallback Chat',
       }),
     });
     const { tab, onForkAll, forkRequestCallback } = setupForkAllTest({ plugin });
 
     tab.state.messages = [
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 2, sdkAssistantUuid: 'asst-1' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 1, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 2, assistantMessageId: 'asst-1' },
     ];
     tab.service = null;
     tab.conversationId = 'conv-1';
@@ -2595,11 +2595,11 @@ describe('Tab - handleForkAll (via /fork command)', () => {
     });
     const { tab, onForkAll, forkRequestCallback } = setupForkAllTest({ plugin });
 
-    const originalMsg = { id: 'a0', role: 'assistant' as const, content: 'hi', timestamp: 1, sdkAssistantUuid: 'asst-0' };
+    const originalMsg = { id: 'a0', role: 'assistant' as const, content: 'hi', timestamp: 1, assistantMessageId: 'asst-0' };
     tab.state.messages = [
       originalMsg,
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u' },
-      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, sdkAssistantUuid: 'asst-1' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u' },
+      { id: 'a1', role: 'assistant', content: 'resp', timestamp: 3, assistantMessageId: 'asst-1' },
     ];
     tab.service = { getSessionId: jest.fn().mockReturnValue('session-1'), resolveSessionIdForFork: jest.fn().mockReturnValue('session-1') } as any;
     tab.conversationId = 'conv-1';

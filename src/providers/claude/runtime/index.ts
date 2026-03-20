@@ -10,5 +10,6 @@ export {
   type QueryOptionsContext,
 } from './ClaudeQueryOptionsBuilder';
 export { SessionManager as ClaudeSessionManager } from './ClaudeSessionManager';
+export { ClaudeTaskResultInterpreter } from './ClaudeTaskResultInterpreter';
 export { createCustomSpawnFunction } from './customSpawn';
 export * from './types';

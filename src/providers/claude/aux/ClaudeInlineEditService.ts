@@ -17,12 +17,12 @@ import {
   TOOL_LS,
   TOOL_READ,
 } from '../../../core/tools/toolNames';
-import { isAdaptiveThinkingModel, THINKING_BUDGETS } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
 import { appendContextFiles } from '../../../utils/context';
 import { getEnhancedPath, getMissingNodeError, parseEnvironmentVariables } from '../../../utils/env';
 import { getPathAccessType, getVaultPath, type PathAccessType } from '../../../utils/path';
 import { getInlineEditSystemPrompt } from '../prompt';
+import { isAdaptiveThinkingModel, THINKING_BUDGETS } from '../types';
 
 export type {
   InlineEditCursorRequest,

@@ -1,7 +1,7 @@
 import {
   createStopSubagentHook,
   type SubagentHookState,
-} from '@/core/hooks/SubagentHooks';
+} from '@/providers/claude/hooks/SubagentHooks';
 
 describe('SubagentHooks', () => {
   describe('createStopSubagentHook', () => {

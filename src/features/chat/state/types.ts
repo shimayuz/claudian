@@ -5,11 +5,11 @@ import type { TodoItem } from '../../../core/tools';
 import type {
   ChatMessage,
   ImageAttachment,
-  PermissionMode,
   SubagentInfo,
   ToolCallInfo,
   UsageInfo,
 } from '../../../core/types';
+import type { PermissionMode } from '../../../providers/claude/types';
 import type { BrowserSelectionContext } from '../../../utils/browser';
 import type { CanvasSelectionContext } from '../../../utils/canvas';
 import type { EditorSelectionContext } from '../../../utils/editor';

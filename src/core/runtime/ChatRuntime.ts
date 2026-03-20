@@ -1,4 +1,3 @@
-import type { SubagentHookState } from '../hooks';
 import type { ProviderCapabilities, ProviderId } from '../providers/types';
 import type { ChatMessage, Conversation, SlashCommand, StreamChunk, ToolCallInfo } from '../types';
 import type {
@@ -12,6 +11,7 @@ import type {
   ExitPlanModeCallback,
   PreparedChatTurn,
   SessionUpdateResult,
+  SubagentRuntimeState,
 } from './types';
 
 export interface ChatRuntime {
@@ -39,13 +39,13 @@ export interface ChatRuntime {
   isReady(): boolean;
   getSupportedCommands(): Promise<SlashCommand[]>;
   cleanup(): void;
-  rewind(sdkUserUuid: string, sdkAssistantUuid: string): Promise<ChatRewindResult>;
+  rewind(userMessageId: string, assistantMessageId: string): Promise<ChatRewindResult>;
   setApprovalCallback(callback: ApprovalCallback | null): void;
   setApprovalDismisser(dismisser: (() => void) | null): void;
   setAskUserQuestionCallback(callback: AskUserQuestionCallback | null): void;
   setExitPlanModeCallback(callback: ExitPlanModeCallback | null): void;
   setPermissionModeSyncCallback(callback: ((sdkMode: string) => void) | null): void;
-  setSubagentHookProvider(getState: () => SubagentHookState): void;
+  setSubagentHookProvider(getState: () => SubagentRuntimeState): void;
   setAutoTurnCallback(callback: ((chunks: StreamChunk[]) => void) | null): void;
 
   buildSessionUpdates(params: {

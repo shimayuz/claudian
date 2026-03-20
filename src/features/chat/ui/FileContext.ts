@@ -1,8 +1,8 @@
 import type { App, EventRef } from 'obsidian';
 import { Notice, TFile } from 'obsidian';
 
-import type { AgentManager } from '../../../core/agents';
 import type { McpServerManager } from '../../../core/mcp';
+import type { AgentManager } from '../../../providers/claude/agents';
 import { MentionDropdownController } from '../../../shared/mention/MentionDropdownController';
 import { VaultMentionDataProvider } from '../../../shared/mention/VaultMentionDataProvider';
 import {

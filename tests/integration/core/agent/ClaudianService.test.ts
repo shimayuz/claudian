@@ -25,9 +25,9 @@ jest.mock('@/core/types', () => {
 // Now import after all mocks are set up
 import { buildResultErrorMessage } from '@test/helpers/sdkMessages';
 
-import { createVaultRestrictionHook } from '@/core/hooks/SecurityHooks';
 import { getActionDescription, getActionPattern } from '@/core/security/ApprovalManager';
 import { getPathFromToolInput } from '@/core/tools/toolInput';
+import { createVaultRestrictionHook } from '@/providers/claude/hooks/SecurityHooks';
 import { ClaudianService } from '@/providers/claude/runtime/ClaudeChatRuntime';
 import { resolveClaudeCliPath } from '@/providers/claude/runtime/ClaudeCliResolver';
 import { transformSDKMessage } from '@/providers/claude/stream/transformClaudeMessage';

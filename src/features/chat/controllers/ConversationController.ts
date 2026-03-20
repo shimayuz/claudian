@@ -40,7 +40,7 @@ export interface ConversationControllerDeps {
 }
 
 type SaveOptions = {
-  resumeSessionAt?: string;
+  resumeAtMessageId?: string;
 };
 
 export class ConversationController {
@@ -257,7 +257,7 @@ export class ConversationController {
       return;
     }
     const userMsg = msgs[userIdx];
-    if (!userMsg.sdkUserUuid) {
+    if (!userMsg.userMessageId) {
       new Notice(t('chat.rewind.unavailableNoUuid'));
       return;
     }
@@ -289,7 +289,7 @@ export class ConversationController {
 
     let result;
     try {
-      result = await agentService.rewind(userMsg.sdkUserUuid, prevAssistantUuid);
+      result = await agentService.rewind(userMsg.userMessageId, prevAssistantUuid);
     } catch (e) {
       new Notice(t('chat.rewind.failed', { error: e instanceof Error ? e.message : 'Unknown error' }));
       return;
@@ -312,7 +312,7 @@ export class ConversationController {
     const filesChanged = result.filesChanged?.length ?? 0;
     let saveError: string | null = null;
     try {
-      await this.save(false, { resumeSessionAt: prevAssistantUuid });
+      await this.save(false, { resumeAtMessageId: prevAssistantUuid });
     } catch (e) {
       saveError = e instanceof Error ? e.message : 'Failed to save';
     }
@@ -362,15 +362,15 @@ export class ConversationController {
 
     const conversation = plugin.getConversationSync(state.currentConversationId!);
 
-    // Delegate session bookkeeping (sdkSessionId, forkSource, previousSdkSessionIds,
-    // isNative promotion, legacyCutoffAt) to the runtime — these are provider-specific.
-    const { updates: sessionUpdates, isNative } = agentService
+    // Delegate session bookkeeping (providerSessionId, forkSource, previousProviderSessionIds,
+    // usesNativeHistory promotion, nativeHistoryCutoffAt) to the runtime — these are provider-specific.
+    const { updates: sessionUpdates, usesNativeHistory } = agentService
       ? agentService.buildSessionUpdates({ conversation, sessionInvalidated })
-      : { updates: {}, isNative: conversation?.isNative ?? false };
+      : { updates: {}, usesNativeHistory: conversation?.usesNativeHistory ?? false };
 
     const updates: Partial<Conversation> = {
       ...sessionUpdates,
-      messages: isNative ? state.messages : state.getPersistedMessages(),
+      messages: usesNativeHistory ? state.messages : state.getPersistedMessages(),
       currentNote: currentNote,
       externalContextPaths: externalContextPaths.length > 0 ? externalContextPaths : undefined,
       usage: state.usage ?? undefined,
@@ -382,7 +382,7 @@ export class ConversationController {
     }
 
     if (options) {
-      updates.resumeSessionAt = options.resumeSessionAt;
+      updates.resumeAtMessageId = options.resumeAtMessageId;
     }
 
     await plugin.updateConversation(state.currentConversationId!, updates);

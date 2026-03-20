@@ -12,4 +12,5 @@ export type {
   ExitPlanModeCallback,
   PreparedChatTurn,
   SessionUpdateResult,
+  SubagentRuntimeState,
 } from './types';

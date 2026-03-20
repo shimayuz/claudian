@@ -4,10 +4,20 @@ import { Notice } from 'obsidian';
 import type { McpServerManager } from '../../../core/mcp';
 import { ProviderRegistry } from '../../../core/providers';
 import type { ChatRuntime } from '../../../core/runtime';
-import type { ChatMessage, ClaudeModel, Conversation, EffortLevel, PermissionMode, SlashCommand, StreamChunk, ThinkingBudget } from '../../../core/types';
-import { DEFAULT_CLAUDE_MODELS, DEFAULT_EFFORT_LEVEL, DEFAULT_THINKING_BUDGET, getContextWindowSize, isAdaptiveThinkingModel } from '../../../core/types';
+import type { ChatMessage, Conversation, SlashCommand, StreamChunk } from '../../../core/types';
 import { t } from '../../../i18n';
 import type ClaudianPlugin from '../../../main';
+import {
+  type ClaudeModel,
+  DEFAULT_CLAUDE_MODELS,
+  DEFAULT_EFFORT_LEVEL,
+  DEFAULT_THINKING_BUDGET,
+  type EffortLevel,
+  getContextWindowSize,
+  isAdaptiveThinkingModel,
+  type PermissionMode,
+  type ThinkingBudget,
+} from '../../../providers/claude/types';
 import { SlashCommandDropdown } from '../../../shared/components/SlashCommandDropdown';
 import { getEnhancedPath } from '../../../utils/env';
 import { getVaultPath } from '../../../utils/path';
@@ -247,8 +257,9 @@ export async function initializeTabService(
   let unsubscribeReadyState: (() => void) | null = null;
 
   try {
-    service = ProviderRegistry.createChatRuntime({ plugin, mcpManager });
-    unsubscribeReadyState = service.onReadyStateChange((ready) => {
+    const runtime = ProviderRegistry.createChatRuntime({ plugin, mcpManager });
+    service = runtime;
+    unsubscribeReadyState = runtime.onReadyStateChange((ready) => {
       tab.ui.modelSelector?.setReady(ready);
     });
     tab.dom.eventCleanups.push(() => unsubscribeReadyState?.());
@@ -263,16 +274,16 @@ export async function initializeTabService(
           ? conversation.externalContextPaths || []
           : (plugin.settings.persistentExternalContextPaths || []);
 
-        service.syncConversationState(conversation, externalContextPaths);
+        runtime.syncConversationState(conversation, externalContextPaths);
       } else {
-        service.ensureReady({
+        runtime.ensureReady({
           externalContextPaths,
         }).catch(() => {
           // Best-effort, ignore failures
         });
       }
     } else {
-      service.ensureReady({
+      runtime.ensureReady({
         externalContextPaths,
       }).catch(() => {
         // Best-effort, ignore failures
@@ -620,7 +631,9 @@ function resolveForkSource(tab: TabData, plugin: ClaudianPlugin): ForkSource | n
   // fall back to persisted conversation metadata when no runtime is active.
   const sourceSessionId = tab.service
     ? tab.service.resolveSessionIdForFork(conversation ?? null)
-    : conversation?.sdkSessionId ?? conversation?.sessionId ?? conversation?.forkSource?.sessionId ?? null;
+    : ProviderRegistry
+      .getConversationHistoryService()
+      .resolveSessionIdForConversation(conversation);
 
   if (!sourceSessionId) {
     new Notice(t('chat.fork.failed', { error: t('chat.fork.errorNoSession') }));
@@ -654,7 +667,7 @@ async function handleForkRequest(
     return;
   }
 
-  if (!msgs[userIdx].sdkUserUuid) {
+  if (!msgs[userIdx].userMessageId) {
     new Notice(t('chat.fork.unavailableNoUuid'));
     return;
   }
@@ -698,8 +711,8 @@ async function handleForkAll(
 
   let lastAssistantUuid: string | undefined;
   for (let i = msgs.length - 1; i >= 0; i--) {
-    if (msgs[i].role === 'assistant' && msgs[i].sdkAssistantUuid) {
-      lastAssistantUuid = msgs[i].sdkAssistantUuid;
+    if (msgs[i].role === 'assistant' && msgs[i].assistantMessageId) {
+      lastAssistantUuid = msgs[i].assistantMessageId;
       break;
     }
   }
@@ -1200,13 +1213,13 @@ function renderAutoTriggeredTurn(tab: TabData, chunks: StreamChunk[]): void {
     chunk => chunk.type === 'tool_use' || chunk.type === 'tool_result'
   );
   let textContent = '';
-  let sdkAssistantUuid: string | undefined;
+  let assistantMessageId: string | undefined;
 
   for (const chunk of chunks) {
     if (chunk.type === 'text') {
       textContent += chunk.content;
-    } else if (chunk.type === 'sdk_assistant_uuid') {
-      sdkAssistantUuid = chunk.uuid;
+    } else if (chunk.type === 'assistant_message_id') {
+      assistantMessageId = chunk.uuid;
     }
   }
 
@@ -1215,12 +1228,12 @@ function renderAutoTriggeredTurn(tab: TabData, chunks: StreamChunk[]): void {
   const content = textContent.trim() || '(background task completed)';
 
   const assistantMsg: ChatMessage = {
-    id: sdkAssistantUuid ?? generateMessageId(),
+    id: assistantMessageId ?? generateMessageId(),
     role: 'assistant',
     content,
     timestamp: Date.now(),
     contentBlocks: [{ type: 'text', content }],
-    ...(sdkAssistantUuid && { sdkAssistantUuid }),
+    ...(assistantMessageId && { assistantMessageId }),
   };
 
   tab.state.addMessage(assistantMsg);

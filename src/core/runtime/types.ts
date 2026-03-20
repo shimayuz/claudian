@@ -68,7 +68,7 @@ export type ChatRuntimeConversationState = Pick<
 
 export interface SessionUpdateResult {
   updates: Partial<Conversation>;
-  isNative: boolean;
+  usesNativeHistory: boolean;
 }
 
 export interface ChatRewindResult {
@@ -77,6 +77,10 @@ export interface ChatRewindResult {
   filesChanged?: string[];
   insertions?: number;
   deletions?: number;
+}
+
+export interface SubagentRuntimeState {
+  hasRunning: boolean;
 }
 
 export type {

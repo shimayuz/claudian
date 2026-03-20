@@ -1,5 +1,5 @@
-import { SKILLS_PATH,SkillStorage } from '@/core/storage/SkillStorage';
 import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
+import { SKILLS_PATH,SkillStorage } from '@/providers/claude/storage/SkillStorage';
 
 function createMockAdapter(files: Record<string, string> = {}): VaultFileAdapter {
   const mockAdapter = {

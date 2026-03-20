@@ -16,10 +16,14 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 
 import type { McpServerManager } from '../../../core/mcp';
-import type { PluginManager } from '../../../core/plugins';
-import { buildSystemPrompt, type SystemPromptSettings } from '../../../core/prompts/mainAgent';
-import type { ClaudianSettings, PermissionMode } from '../../../core/types';
-import { isAdaptiveThinkingModel, THINKING_BUDGETS } from '../../../core/types';
+import type { PluginManager } from '../plugins';
+import { buildSystemPrompt, type SystemPromptSettings } from '../prompt';
+import {
+  type ClaudianSettings,
+  isAdaptiveThinkingModel,
+  type PermissionMode,
+  THINKING_BUDGETS,
+} from '../types';
 import { createCustomSpawnFunction } from './customSpawn';
 import {
   computeSystemPromptKey,
@@ -58,7 +62,7 @@ export interface PersistentQueryContext extends QueryOptionsContext {
   /** Session resume state (sessionId required; sessionAt and fork only meaningful with a session). */
   resume?: {
     sessionId: string;
-    /** Assistant UUID for resumeSessionAt after rewind. */
+    /** Assistant checkpoint ID for SDK resumeSessionAt after rewind. */
     sessionAt?: string;
     /** Fork the session (non-destructive branch). */
     fork?: boolean;

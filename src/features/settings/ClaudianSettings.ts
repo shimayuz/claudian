@@ -2,12 +2,13 @@ import * as fs from 'fs';
 import type { App } from 'obsidian';
 import { Notice, PluginSettingTab, Setting } from 'obsidian';
 
-import { getCurrentPlatformKey, getHostnameKey } from '../../core/types';
-import { DEFAULT_CLAUDE_MODELS, filterVisibleModelOptions } from '../../core/types/models';
+import { getCurrentPlatformKey } from '../../core/types';
 import { getAvailableLocales, getLocaleDisplayName, setLocale, t } from '../../i18n';
 import type { Locale, TranslationKey } from '../../i18n/types';
 import type ClaudianPlugin from '../../main';
+import { DEFAULT_CLAUDE_MODELS, filterVisibleModelOptions } from '../../providers/claude/types';
 import { findNodeExecutable, formatContextLimit, getCustomModelIds, getEnhancedPath, getModelsFromEnvironment, parseContextLimit, parseEnvironmentVariables } from '../../utils/env';
+import { getHostnameKey } from '../../utils/env';
 import { expandHomePath } from '../../utils/path';
 import { ClaudianView } from '../chat/ClaudianView';
 import { buildNavMappingText, parseNavMappings } from './keyboardNavigation';

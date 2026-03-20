@@ -4,7 +4,7 @@ import {
   DEPRECATED_FIELDS,
   mergeEnvironmentVariables,
   MIGRATABLE_CLAUDIAN_FIELDS,
-} from '@/core/storage/migrationConstants';
+} from '@/providers/claude/storage/migrationConstants';
 
 describe('migrationConstants', () => {
   describe('CLAUDIAN_ONLY_FIELDS', () => {

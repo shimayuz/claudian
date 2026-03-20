@@ -1,8 +1,9 @@
 import * as os from 'os';
 
 import { TOOL_SUBAGENT } from '@/core/tools';
-import { DEFAULT_SETTINGS, VIEW_TYPE_CLAUDIAN } from '@/core/types';
+import { VIEW_TYPE_CLAUDIAN } from '@/core/types';
 import * as sdkSession from '@/providers/claude/history/ClaudeHistoryStore';
+import { DEFAULT_SETTINGS } from '@/providers/claude/types';
 
 // Mock fs for ClaudianService
 jest.mock('fs');
@@ -703,19 +704,19 @@ describe('ClaudianPlugin', () => {
   });
 
   describe('Multi-session message loading', () => {
-    it('should load messages from previousSdkSessionIds when present', async () => {
+    it('should load messages from previousProviderSessionIds when present', async () => {
       const timestamp = Date.now();
 
-      // Setup conversation with previousSdkSessionIds
+      // Setup conversation with previousProviderSessionIds
       const sessionMeta = JSON.stringify({
         type: 'meta',
         id: 'conv-multi-session',
         title: 'Multi Session Chat',
         createdAt: timestamp,
         updatedAt: timestamp,
-        sdkSessionId: 'session-B',
-        previousSdkSessionIds: ['session-A'],
-        isNative: true,
+        providerSessionId: 'session-B',
+        previousProviderSessionIds: ['session-A'],
+        usesNativeHistory: true,
       });
 
       mockApp.vault.adapter.exists.mockImplementation(async (path: string) => {
@@ -744,45 +745,45 @@ describe('ClaudianPlugin', () => {
       await plugin.loadSettings();
 
       const loaded = await plugin.getConversationById('conv-multi-session');
-      expect(loaded?.previousSdkSessionIds).toEqual(['session-A']);
-      expect(loaded?.sdkSessionId).toBe('session-B');
+      expect(loaded?.previousProviderSessionIds).toEqual(['session-A']);
+      expect(loaded?.providerSessionId).toBe('session-B');
     });
 
-    it('should preserve previousSdkSessionIds through conversation updates', async () => {
+    it('should preserve previousProviderSessionIds through conversation updates', async () => {
       await plugin.onload();
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        sdkSessionId: 'session-B',
-        previousSdkSessionIds: ['session-A'],
-        isNative: true,
+        providerSessionId: 'session-B',
+        previousProviderSessionIds: ['session-A'],
+        usesNativeHistory: true,
       });
 
       const updated = await plugin.getConversationById(conv.id);
-      expect(updated?.previousSdkSessionIds).toEqual(['session-A']);
-      expect(updated?.sdkSessionId).toBe('session-B');
+      expect(updated?.previousProviderSessionIds).toEqual(['session-A']);
+      expect(updated?.providerSessionId).toBe('session-B');
 
-      // Further update should preserve previousSdkSessionIds
+      // Further update should preserve previousProviderSessionIds
       await plugin.updateConversation(conv.id, {
         title: 'Updated Title',
       });
 
       const afterTitleUpdate = await plugin.getConversationById(conv.id);
-      expect(afterTitleUpdate?.previousSdkSessionIds).toEqual(['session-A']);
+      expect(afterTitleUpdate?.previousProviderSessionIds).toEqual(['session-A']);
     });
 
-    it('should handle empty previousSdkSessionIds array', async () => {
+    it('should handle empty previousProviderSessionIds array', async () => {
       await plugin.onload();
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        sdkSessionId: 'session-A',
-        previousSdkSessionIds: [],
-        isNative: true,
+        providerSessionId: 'session-A',
+        previousProviderSessionIds: [],
+        usesNativeHistory: true,
       });
 
       const updated = await plugin.getConversationById(conv.id);
-      expect(updated?.previousSdkSessionIds).toEqual([]);
+      expect(updated?.previousProviderSessionIds).toEqual([]);
     });
   });
 
@@ -792,13 +793,13 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
+        usesNativeHistory: true,
         forkSource: { sessionId: 'source-session-abc', resumeAt: 'asst-uuid-cutoff' },
-        // No sessionId or sdkSessionId → isPendingFork returns true
+        // No sessionId or providerSessionId → isPendingFork returns true
         sessionId: null,
-        sdkSessionId: undefined,
-        // Reset sdkMessagesLoaded to simulate plugin restart
-        sdkMessagesLoaded: false,
+        providerSessionId: undefined,
+        // Reset nativeHistoryLoaded to simulate plugin restart
+        nativeHistoryLoaded: false,
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -827,21 +828,21 @@ describe('ClaudianPlugin', () => {
       );
 
       // Messages should be loaded
-      expect(loaded?.sdkMessagesLoaded).toBe(true);
+      expect(loaded?.nativeHistoryLoaded).toBe(true);
 
       existsSpy.mockRestore();
       loadSpy.mockRestore();
     });
 
-    it('should NOT use fork path when conversation has its own sdkSessionId', async () => {
+    it('should NOT use fork path when conversation has its own providerSessionId', async () => {
       await plugin.onload();
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
+        usesNativeHistory: true,
         forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid' },
-        sdkSessionId: 'own-session-id',
-        sdkMessagesLoaded: false,
+        providerSessionId: 'own-session-id',
+        nativeHistoryLoaded: false,
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -869,9 +870,9 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
-        sdkSessionId: 'session-subagent-recovery',
-        sdkMessagesLoaded: false,
+        usesNativeHistory: true,
+        providerSessionId: 'session-subagent-recovery',
+        nativeHistoryLoaded: false,
         messages: [
           {
             id: 'assistant-1',
@@ -947,9 +948,9 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
-        sdkSessionId: 'session-subagent-merge',
-        sdkMessagesLoaded: false,
+        usesNativeHistory: true,
+        providerSessionId: 'session-subagent-merge',
+        nativeHistoryLoaded: false,
         messages: [
           {
             id: 'assistant-merge',
@@ -1008,9 +1009,9 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
-        sdkSessionId: 'session-subagent-cache-richer',
-        sdkMessagesLoaded: false,
+        usesNativeHistory: true,
+        providerSessionId: 'session-subagent-cache-richer',
+        nativeHistoryLoaded: false,
         messages: [],
         subagentData: {
           'task-merge-2': {
@@ -1077,9 +1078,9 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
-        sdkSessionId: 'session-sync-subagent-cleanup',
-        sdkMessagesLoaded: false,
+        usesNativeHistory: true,
+        providerSessionId: 'session-sync-subagent-cleanup',
+        nativeHistoryLoaded: false,
         messages: [
           {
             id: 'assistant-sync',
@@ -1133,9 +1134,9 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
-        sdkSessionId: 'session-async-sdk-terminal',
-        sdkMessagesLoaded: false,
+        usesNativeHistory: true,
+        providerSessionId: 'session-async-sdk-terminal',
+        nativeHistoryLoaded: false,
         messages: [],
         subagentData: {
           'task-async-sdk-terminal': {
@@ -1203,9 +1204,9 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
-        sdkSessionId: 'session-async-cache-terminal',
-        sdkMessagesLoaded: false,
+        usesNativeHistory: true,
+        providerSessionId: 'session-async-cache-terminal',
+        nativeHistoryLoaded: false,
         messages: [],
         subagentData: {
           'task-async-cache-terminal': {
@@ -1274,9 +1275,9 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
-        sdkSessionId: 'session-async-subagent-recovery',
-        sdkMessagesLoaded: false,
+        usesNativeHistory: true,
+        providerSessionId: 'session-async-subagent-recovery',
+        nativeHistoryLoaded: false,
         messages: [
           {
             id: 'assistant-1',
@@ -1343,9 +1344,9 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
-        sdkSessionId: 'session-async-subagent-tools',
-        sdkMessagesLoaded: false,
+        usesNativeHistory: true,
+        providerSessionId: 'session-async-subagent-tools',
+        nativeHistoryLoaded: false,
         messages: [
           {
             id: 'assistant-1',
@@ -1423,9 +1424,9 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        isNative: true,
-        sdkSessionId: 'session-async-subagent-fallback',
-        sdkMessagesLoaded: false,
+        usesNativeHistory: true,
+        providerSessionId: 'session-async-subagent-fallback',
+        nativeHistoryLoaded: false,
         messages: [
           {
             id: 'assistant-1',

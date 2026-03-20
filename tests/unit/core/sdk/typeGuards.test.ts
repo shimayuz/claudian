@@ -1,5 +1,5 @@
-import { isSessionInitEvent, isStreamChunk } from '@/core/sdk/typeGuards';
-import type { TransformEvent } from '@/core/sdk/types';
+import { isSessionInitEvent, isStreamChunk } from '@/providers/claude/sdk/typeGuards';
+import type { TransformEvent } from '@/providers/claude/sdk/types';
 
 describe('isSessionInitEvent', () => {
   it('should return true for session_init events', () => {

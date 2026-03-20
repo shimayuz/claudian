@@ -1,6 +1,6 @@
-import { SlashCommandStorage } from '@/core/storage/SlashCommandStorage';
 import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
 import type { SlashCommand } from '@/core/types';
+import { SlashCommandStorage } from '@/providers/claude/storage/SlashCommandStorage';
 
 describe('SlashCommandStorage', () => {
   let mockAdapter: jest.Mocked<VaultFileAdapter>;

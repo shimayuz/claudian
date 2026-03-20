@@ -1,7 +1,7 @@
 import type { Plugin } from 'obsidian';
 
-import { StorageService } from '@/core/storage';
-import { createPermissionRule } from '@/core/types';
+import { StorageService } from '@/providers/claude/storage';
+import { createPermissionRule } from '@/providers/claude/types';
 
 function createMockAdapter(initialFiles: Record<string, string> = {}) {
   const files = new Map<string, string>(Object.entries(initialFiles));

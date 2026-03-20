@@ -1,13 +1,19 @@
 import type {
   ChatMessage,
-  ClaudianSettings,
   Conversation,
   ConversationMeta,
   EnvSnippet,
-  LegacyPermission,
   StreamChunk,
   ToolCallInfo
 } from '@/core/types';
+import {
+  getBashToolBlockedCommands,
+  getCurrentPlatformBlockedCommands,
+  getCurrentPlatformKey,
+  getDefaultBlockedCommands,
+  VIEW_TYPE_CLAUDIAN
+} from '@/core/types';
+import type { ClaudianSettings, LegacyPermission } from '@/providers/claude/types';
 import {
   CONTEXT_WINDOW_1M,
   CONTEXT_WINDOW_STANDARD,
@@ -15,19 +21,14 @@ import {
   DEFAULT_CLAUDE_MODELS,
   DEFAULT_SETTINGS,
   filterVisibleModelOptions,
-  getBashToolBlockedCommands,
   getCliPlatformKey,
   getContextWindowSize,
-  getCurrentPlatformBlockedCommands,
-  getCurrentPlatformKey,
-  getDefaultBlockedCommands,
   isAdaptiveThinkingModel,
   legacyPermissionsToCCPermissions,
   legacyPermissionToCCRule,
   normalizeVisibleModelVariant,
   parseCCPermissionRule,
-  VIEW_TYPE_CLAUDIAN
-} from '@/core/types';
+} from '@/providers/claude/types';
 
 describe('types.ts', () => {
   describe('VIEW_TYPE_CLAUDIAN', () => {

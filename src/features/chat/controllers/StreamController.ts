@@ -149,12 +149,12 @@ export class StreamController {
         break;
       }
 
-      case 'sdk_assistant_uuid':
-        msg.sdkAssistantUuid = chunk.uuid;
+      case 'assistant_message_id':
+        msg.assistantMessageId = chunk.uuid;
         break;
 
-      case 'sdk_user_uuid':
-      case 'sdk_user_sent':
+      case 'user_message_id':
+      case 'user_message_sent':
         break;
 
       case 'usage': {

@@ -1,10 +1,11 @@
+import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
+import { getDefaultBlockedCommands } from '@/core/types';
 import {
   CLAUDIAN_SETTINGS_PATH,
   ClaudianSettingsStorage,
   normalizeBlockedCommands,
-} from '@/core/storage/ClaudianSettingsStorage';
-import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
-import { DEFAULT_SETTINGS, getDefaultBlockedCommands } from '@/core/types';
+} from '@/providers/claude/storage/ClaudianSettingsStorage';
+import { DEFAULT_SETTINGS } from '@/providers/claude/types';
 
 const mockAdapter = {
   exists: jest.fn(),

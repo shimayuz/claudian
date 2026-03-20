@@ -30,14 +30,7 @@ import { Notice } from 'obsidian';
 import * as os from 'os';
 import * as path from 'path';
 
-import {
-  createBlocklistHook,
-  createStopSubagentHook,
-  createVaultRestrictionHook,
-  type SubagentHookState,
-} from '../../../core/hooks';
 import type { McpServerManager } from '../../../core/mcp';
-import { CLAUDE_PROVIDER_CAPABILITIES } from '../../../core/providers/types';
 import type {
   ApprovalCallback,
   AskUserQuestionCallback,
@@ -50,9 +43,7 @@ import type {
   PreparedChatTurn,
   SessionUpdateResult,
 } from '../../../core/runtime';
-import { isSessionInitEvent, isStreamChunk } from '../../../core/sdk';
 import {
-  buildPermissionUpdates,
   getActionDescription,
 } from '../../../core/security';
 import { TOOL_ASK_USER_QUESTION, TOOL_ENTER_PLAN_MODE, TOOL_EXIT_PLAN_MODE, TOOL_SKILL } from '../../../core/tools/toolNames';
@@ -63,12 +54,10 @@ import type {
   ExitPlanModeCallback,
   ExitPlanModeDecision,
   ImageAttachment,
-  PermissionMode,
   SlashCommand,
   StreamChunk,
   ToolCallInfo,
 } from '../../../core/types';
-import { isAdaptiveThinkingModel, THINKING_BUDGETS } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
 import { stripCurrentNoteContext } from '../../../utils/context';
 import { getEnhancedPath, getMissingNodeError, parseEnvironmentVariables } from '../../../utils/env';
@@ -79,9 +68,23 @@ import {
   getLastUserMessage,
   isSessionExpiredError,
 } from '../../../utils/session';
+import { CLAUDE_PROVIDER_CAPABILITIES } from '../capabilities';
 import { loadSubagentFinalResult, loadSubagentToolCalls } from '../history/ClaudeHistoryStore';
+import {
+  createBlocklistHook,
+  createStopSubagentHook,
+  createVaultRestrictionHook,
+  type SubagentHookState,
+} from '../hooks';
 import { encodeClaudeTurn } from '../prompt';
+import { isSessionInitEvent, isStreamChunk } from '../sdk';
+import { buildPermissionUpdates } from '../security/ClaudePermissionUpdates';
 import { transformSDKMessage } from '../stream/transformClaudeMessage';
+import {
+  isAdaptiveThinkingModel,
+  type PermissionMode,
+  THINKING_BUDGETS,
+} from '../types';
 import { MessageChannel } from './ClaudeMessageChannel';
 import {
   type ColdStartQueryContext,
@@ -215,8 +218,8 @@ export class ClaudianService implements ChatRuntime {
   }
 
   /** One-shot: consumed on the next query, then cleared by routeMessage on session init. */
-  applyForkState(conv: Pick<Conversation, 'sessionId' | 'sdkSessionId' | 'forkSource'>): string | null {
-    const isPending = !conv.sessionId && !conv.sdkSessionId && !!conv.forkSource;
+  applyForkState(conv: Pick<Conversation, 'sessionId' | 'providerSessionId' | 'forkSource'>): string | null {
+    const isPending = !conv.sessionId && !conv.providerSessionId && !!conv.forkSource;
     this.pendingForkSession = isPending;
     if (isPending) {
       this.pendingResumeAt = conv.forkSource!.resumeAt;
@@ -239,7 +242,7 @@ export class ClaudianService implements ChatRuntime {
 
     // The interface only requires `sessionId`, but callers pass a full Conversation
     // which also carries Claude-specific fork/session fields.
-    const conv = conversation as Pick<Conversation, 'sessionId' | 'sdkSessionId' | 'forkSource'>;
+    const conv = conversation as Pick<Conversation, 'sessionId' | 'providerSessionId' | 'forkSource'>;
     const resolvedSessionId = this.applyForkState(conv);
     this.setSessionId(resolvedSessionId, externalContextPaths);
   }
@@ -250,22 +253,22 @@ export class ClaudianService implements ChatRuntime {
   }): SessionUpdateResult {
     const sessionId = this.getSessionId();
 
-    const wasNative = conversation?.isNative ?? false;
+    const wasNative = conversation?.usesNativeHistory ?? false;
     const shouldPromote = !wasNative && !!sessionId;
-    const isNative = wasNative || shouldPromote;
+    const usesNativeHistory = wasNative || shouldPromote;
     const legacyMessages = conversation?.messages ?? [];
-    const legacyCutoffAt = shouldPromote
+    const nativeHistoryCutoffAt = shouldPromote
       ? legacyMessages[legacyMessages.length - 1]?.timestamp
-      : conversation?.legacyCutoffAt;
+      : conversation?.nativeHistoryCutoffAt;
 
-    const oldSdkSessionId = conversation?.sdkSessionId;
-    const sessionChanged = isNative && sessionId && oldSdkSessionId && sessionId !== oldSdkSessionId;
-    const previousSdkSessionIds = sessionChanged
-      ? [...new Set([...(conversation?.previousSdkSessionIds || []), oldSdkSessionId])]
-      : conversation?.previousSdkSessionIds;
+    const oldSdkSessionId = conversation?.providerSessionId;
+    const sessionChanged = usesNativeHistory && sessionId && oldSdkSessionId && sessionId !== oldSdkSessionId;
+    const previousProviderSessionIds = sessionChanged
+      ? [...new Set([...(conversation?.previousProviderSessionIds || []), oldSdkSessionId])]
+      : conversation?.previousProviderSessionIds;
 
     const isForkSourceOnly = !!conversation?.forkSource &&
-      !conversation?.sdkSessionId &&
+      !conversation?.providerSessionId &&
       sessionId === conversation.forkSource.sessionId;
 
     let resolvedSessionId: string | null;
@@ -279,25 +282,25 @@ export class ClaudianService implements ChatRuntime {
 
     const updates: Partial<Conversation> = {
       sessionId: resolvedSessionId,
-      sdkSessionId: isNative && sessionId && !isForkSourceOnly ? sessionId : conversation?.sdkSessionId,
-      previousSdkSessionIds,
-      isNative: isNative || undefined,
-      legacyCutoffAt,
-      sdkMessagesLoaded: isNative ? true : undefined,
+      providerSessionId: usesNativeHistory && sessionId && !isForkSourceOnly ? sessionId : conversation?.providerSessionId,
+      previousProviderSessionIds,
+      usesNativeHistory: usesNativeHistory || undefined,
+      nativeHistoryCutoffAt,
+      nativeHistoryLoaded: usesNativeHistory ? true : undefined,
     };
 
     if (conversation?.forkSource && sessionId && sessionId !== conversation.forkSource.sessionId) {
       updates.forkSource = undefined;
     }
 
-    return { updates, isNative };
+    return { updates, usesNativeHistory };
   }
 
   resolveSessionIdForFork(conversation: Conversation | null): string | null {
     const sessionId = this.getSessionId();
     if (sessionId) return sessionId;
     if (!conversation) return null;
-    return conversation.sdkSessionId ?? conversation.sessionId ?? conversation.forkSource?.sessionId ?? null;
+    return conversation.providerSessionId ?? conversation.sessionId ?? conversation.forkSource?.sessionId ?? null;
   }
 
   async loadSubagentToolCalls(agentId: string): Promise<ToolCallInfo[]> {
@@ -419,12 +422,12 @@ export class ClaudianService implements ChatRuntime {
 
     // await is intentional: yields to microtask queue so fire-and-forget callers
     // (e.g. setSessionId → ensureReady) don't synchronously set persistentQuery
-    const resumeSessionAt = this.pendingResumeAt;
+    const resumeAtMessageId = this.pendingResumeAt;
     const options = await this.buildPersistentQueryOptions(
       vaultPath,
       cliPath,
       resumeSessionId,
-      resumeSessionAt,
+      resumeAtMessageId,
       externalContextPaths
     );
 
@@ -433,7 +436,7 @@ export class ClaudianService implements ChatRuntime {
       options,
     });
 
-    if (this.pendingResumeAt === resumeSessionAt) {
+    if (this.pendingResumeAt === resumeAtMessageId) {
       this.pendingResumeAt = undefined;
     }
     this.attachPersistentQueryStdinErrorHandler(this.persistentQuery);
@@ -571,7 +574,7 @@ export class ClaudianService implements ChatRuntime {
     vaultPath: string,
     cliPath: string,
     resumeSessionId?: string,
-    resumeSessionAt?: string,
+    resumeAtMessageId?: string,
     externalContextPaths?: string[]
   ): Options {
     const baseContext = this.buildQueryOptionsContext(vaultPath, cliPath);
@@ -581,7 +584,7 @@ export class ClaudianService implements ChatRuntime {
       ...baseContext,
       abortController: this.queryAbortController ?? undefined,
       resume: resumeSessionId
-        ? { sessionId: resumeSessionId, sessionAt: resumeSessionAt, fork: this.pendingForkSession || undefined }
+        ? { sessionId: resumeSessionId, sessionAt: resumeAtMessageId, fork: this.pendingForkSession || undefined }
         : undefined,
       canUseTool: this.createApprovalCallback(),
       hooks,
@@ -808,7 +811,7 @@ export class ClaudianService implements ChatRuntime {
     }
 
     if (message.type === 'assistant' && message.uuid) {
-      const uuidChunk: StreamChunk = { type: 'sdk_assistant_uuid', uuid: message.uuid };
+      const uuidChunk: StreamChunk = { type: 'assistant_message_id', uuid: message.uuid };
       if (handler) {
         handler.onChunk(uuidChunk);
       } else {
@@ -1196,7 +1199,7 @@ export class ClaudianService implements ChatRuntime {
 
     const message = this.buildSDKUserMessage(prompt, images);
 
-    yield { type: 'sdk_user_uuid', uuid: message.uuid! };
+    yield { type: 'user_message_id', uuid: message.uuid! };
 
     // Create a promise-based handler to yield chunks
     // Use a mutable state object to work around TypeScript's control flow analysis
@@ -1256,7 +1259,7 @@ export class ClaudianService implements ChatRuntime {
         throw error;
       }
 
-      yield { type: 'sdk_user_sent', uuid: message.uuid! };
+      yield { type: 'user_message_sent', uuid: message.uuid! };
 
       // Yield chunks as they arrive
       while (!state.done) {
@@ -1712,10 +1715,10 @@ export class ClaudianService implements ChatRuntime {
     this.resetSession();
   }
 
-  async rewindFiles(sdkUserUuid: string, dryRun?: boolean): Promise<RewindFilesResult> {
+  async rewindFiles(userMessageId: string, dryRun?: boolean): Promise<RewindFilesResult> {
     if (!this.persistentQuery) throw new Error('No active query');
     if (this.shuttingDown) throw new Error('Service is shutting down');
-    return this.persistentQuery.rewindFiles(sdkUserUuid, { dryRun });
+    return this.persistentQuery.rewindFiles(userMessageId, { dryRun });
   }
 
   private resolveRewindFilePath(filePath: string): string {
@@ -1852,22 +1855,22 @@ export class ClaudianService implements ChatRuntime {
     return { restore, cleanup };
   }
 
-  async rewind(sdkUserUuid: string, sdkAssistantUuid: string): Promise<ChatRewindResult> {
+  async rewind(userMessageId: string, assistantMessageId: string): Promise<ChatRewindResult> {
     // SDK only returns filesChanged/insertions/deletions on dry runs
-    const preview = await this.rewindFiles(sdkUserUuid, true);
+    const preview = await this.rewindFiles(userMessageId, true);
     if (!preview.canRewind) return preview;
 
     const backup = await this.createRewindBackup(preview.filesChanged);
 
     try {
-      const result = await this.rewindFiles(sdkUserUuid);
+      const result = await this.rewindFiles(userMessageId);
       if (!result.canRewind) {
         await backup?.restore();
         this.closePersistentQuery('rewind failed');
         return result;
       }
 
-      this.pendingResumeAt = sdkAssistantUuid;
+      this.pendingResumeAt = assistantMessageId;
       this.closePersistentQuery('rewind');
       return {
         ...result,

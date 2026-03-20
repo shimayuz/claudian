@@ -6,9 +6,9 @@
 
 import * as fs from 'fs';
 
-import { type HostnameCliPaths } from '../../../core/types/settings';
 import { getHostnameKey, parseEnvironmentVariables } from '../../../utils/env';
 import { expandHomePath, findClaudeCLIPath } from '../../../utils/path';
+import { type HostnameCliPaths } from '../types';
 
 export class ClaudeCliResolver {
   private resolvedPath: string | null = null;

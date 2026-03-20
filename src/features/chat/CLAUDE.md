@@ -4,8 +4,8 @@ Main sidebar chat interface. `ClaudianView` is a thin shell; logic lives in cont
 
 ## Provider Boundary Status
 
-- Current state: chat features depend on `ChatRuntime` (provider-neutral interface). `InputController` builds structured `ChatTurnRequest` objects; prompt encoding is delegated to the runtime via `prepareTurn()`. Session bookkeeping (`sdkSessionId`, `forkSource`, `previousSdkSessionIds`) is handled by `ChatRuntime.buildSessionUpdates()`. Auxiliary services (title gen, instruction refine) are created via `ProviderRegistry` factory methods.
-- Remaining debt: type-only imports of concrete Claude aux services in controller deps interfaces; `Conversation` type still carries Claude-specific fields (`sdkSessionId`, `forkSource`).
+- Current state: chat features depend on `ChatRuntime` (provider-neutral interface). `InputController` builds structured `ChatTurnRequest` objects; prompt encoding is delegated to the runtime via `prepareTurn()`. Session bookkeeping (`providerSessionId`, `forkSource`, `previousProviderSessionIds`) is handled by `ChatRuntime.buildSessionUpdates()`. Auxiliary services, history/session fallback, and task-result interpretation are created via `ProviderRegistry`.
+- Remaining debt: `Conversation` type still carries Claude-specific fields (`providerSessionId`, `forkSource`).
 - Target state: chat should talk exclusively to the thin runtime facade; conversation schema should be provider-neutral.
 - Execution reference: [`docs/multi-provider-execution-plan.md`](../../../docs/multi-provider-execution-plan.md)
 
@@ -61,7 +61,7 @@ User Input → InputController → ChatRuntime.query()
                               ChatState (persist)
 ```
 
-Current flow now routes through the runtime facade, but request construction and persisted conversation state remain Claude-centric by design. The planned end state is `InputController -> structured request -> ChatRuntime.query()` with provider-owned prompt encoding.
+Current flow now routes through the runtime facade, and provider-owned services handle prompt encoding, history/session fallback, and task-result interpretation. Persisted conversation state remains Claude-centric by design until a later schema cleanup.
 
 ## Controllers
 

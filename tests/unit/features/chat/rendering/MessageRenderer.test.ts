@@ -225,9 +225,9 @@ describe('MessageRenderer', () => {
     jest.spyOn(renderer, 'renderContent').mockResolvedValue(undefined);
 
     const allMessages: ChatMessage[] = [
-      { id: 'a1', role: 'assistant', content: '', timestamp: 1, sdkAssistantUuid: 'prev-a' },
-      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, sdkUserUuid: 'user-u' },
-      { id: 'a2', role: 'assistant', content: '', timestamp: 3, sdkAssistantUuid: 'resp-a' },
+      { id: 'a1', role: 'assistant', content: '', timestamp: 1, assistantMessageId: 'prev-a' },
+      { id: 'u1', role: 'user', content: 'hello', timestamp: 2, userMessageId: 'user-u' },
+      { id: 'a2', role: 'assistant', content: '', timestamp: 3, assistantMessageId: 'resp-a' },
     ];
 
     renderer.renderStoredMessage(allMessages[1], allMessages, 1);
@@ -246,7 +246,7 @@ describe('MessageRenderer', () => {
       role: 'user',
       content: 'hello',
       timestamp: 1,
-      sdkUserUuid: 'user-u',
+      userMessageId: 'user-u',
     };
 
     renderer.renderStoredMessage(msg);
@@ -265,14 +265,14 @@ describe('MessageRenderer', () => {
       role: 'user',
       content: 'hello',
       timestamp: 2,
-      sdkUserUuid: 'user-u',
+      userMessageId: 'user-u',
     };
     renderer.addMessage(userMsg);
 
     const allMessages: ChatMessage[] = [
-      { id: 'a1', role: 'assistant', content: '', timestamp: 1, sdkAssistantUuid: 'prev-a' },
+      { id: 'a1', role: 'assistant', content: '', timestamp: 1, assistantMessageId: 'prev-a' },
       userMsg,
-      { id: 'a2', role: 'assistant', content: '', timestamp: 3, sdkAssistantUuid: 'resp-a' },
+      { id: 'a2', role: 'assistant', content: '', timestamp: 3, assistantMessageId: 'resp-a' },
     ];
 
     renderer.refreshActionButtons(userMsg, allMessages, 1);
