@@ -1,3 +1,4 @@
+import type { ProviderId } from '@/core/providers/types';
 import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
 import type { Conversation, SessionMetadata, UsageInfo } from '@/core/types';
 import { SESSIONS_PATH, SessionStorage } from '@/providers/claude/storage/SessionStorage';
@@ -114,7 +115,7 @@ describe('SessionStorage', () => {
 
       const result = await storage.loadMetadata('session-abc');
 
-      expect(result).toEqual(metadata);
+      expect(result).toEqual({ ...metadata, providerId: 'claude' });
     });
 
     it('returns null on parse error', async () => {
@@ -295,6 +296,7 @@ describe('SessionStorage', () => {
     it('extracts subagent data from Task toolCalls', () => {
       const conversation: Conversation = {
         id: 'conv-subagent',
+        providerId: 'claude' as ProviderId,
         title: 'Subagent Test',
         createdAt: 1700000000,
         updatedAt: 1700001000,
@@ -329,8 +331,8 @@ describe('SessionStorage', () => {
 
       const metadata = storage.toSessionMetadata(conversation);
 
-      expect(metadata.subagentData).toBeDefined();
-      expect(metadata.subagentData!['task-1']).toEqual(expect.objectContaining({
+      expect((metadata.providerState as any)?.subagentData).toBeDefined();
+      expect((metadata.providerState as any)?.subagentData['task-1']).toEqual(expect.objectContaining({
         id: 'task-1',
         description: 'Test subagent',
         status: 'completed',
@@ -340,6 +342,7 @@ describe('SessionStorage', () => {
     it('returns undefined subagentData when no subagents present', () => {
       const conversation: Conversation = {
         id: 'conv-no-subagent',
+        providerId: 'claude' as ProviderId,
         title: 'No Subagent',
         createdAt: 1700000000,
         updatedAt: 1700001000,
@@ -352,12 +355,13 @@ describe('SessionStorage', () => {
 
       const metadata = storage.toSessionMetadata(conversation);
 
-      expect(metadata.subagentData).toBeUndefined();
+      expect((metadata.providerState as any)?.subagentData).toBeUndefined();
     });
 
     it('ignores Task toolCalls without linked subagent', () => {
       const conversation: Conversation = {
         id: 'conv-task-subagent',
+        providerId: 'claude' as ProviderId,
         title: 'Task Subagent Test',
         createdAt: 1700000000,
         updatedAt: 1700001000,
@@ -383,7 +387,7 @@ describe('SessionStorage', () => {
 
       const metadata = storage.toSessionMetadata(conversation);
 
-      expect(metadata.subagentData).toBeUndefined();
+      expect((metadata.providerState as any)?.subagentData).toBeUndefined();
     });
   });
 
@@ -391,6 +395,7 @@ describe('SessionStorage', () => {
     it('includes resumeAtMessageId when set', () => {
       const conversation: Conversation = {
         id: 'conv-rewind',
+        providerId: 'claude' as ProviderId,
         title: 'Rewind Test',
         createdAt: 1700000000,
         updatedAt: 1700001000,
@@ -407,6 +412,7 @@ describe('SessionStorage', () => {
     it('omits resumeAtMessageId when not set', () => {
       const conversation: Conversation = {
         id: 'conv-no-rewind',
+        providerId: 'claude' as ProviderId,
         title: 'No Rewind',
         createdAt: 1700000000,
         updatedAt: 1700001000,
@@ -434,12 +440,13 @@ describe('SessionStorage', () => {
 
       const conversation: Conversation = {
         id: 'conv-convert',
+        providerId: 'claude' as ProviderId,
         title: 'Convert Test',
         createdAt: 1700000000,
         updatedAt: 1700001000,
         lastResponseAt: 1700000900,
         sessionId: 'sdk-session',
-        providerSessionId: 'current-sdk-session',
+        providerState: { providerSessionId: 'current-sdk-session' },
         messages: [
           { id: 'msg-1', role: 'user', content: 'Hello', timestamp: 1700000100 },
         ],
@@ -458,7 +465,7 @@ describe('SessionStorage', () => {
       expect(metadata.updatedAt).toBe(1700001000);
       expect(metadata.lastResponseAt).toBe(1700000900);
       expect(metadata.sessionId).toBe('sdk-session');
-      expect(metadata.providerSessionId).toBe('current-sdk-session');
+      expect((metadata.providerState as any)?.providerSessionId).toBe('current-sdk-session');
       expect(metadata.currentNote).toBe('notes/test.md');
       expect(metadata.externalContextPaths).toEqual(['/external/path']);
       expect(metadata.enabledMcpServers).toEqual(['mcp-server']);
@@ -472,17 +479,18 @@ describe('SessionStorage', () => {
     it('includes forkSource when set', () => {
       const conversation: Conversation = {
         id: 'conv-fork',
+        providerId: 'claude' as ProviderId,
         title: 'Fork Test',
         createdAt: 1700000000,
         updatedAt: 1700001000,
         sessionId: null,
         messages: [],
-        forkSource: { sessionId: 'source-session-abc', resumeAt: 'asst-uuid-xyz' },
+        providerState: { forkSource: { sessionId: 'source-session-abc', resumeAt: 'asst-uuid-xyz' } },
       };
 
       const metadata = storage.toSessionMetadata(conversation);
 
-      expect(metadata.forkSource).toEqual({
+      expect((metadata.providerState as any)?.forkSource).toEqual({
         sessionId: 'source-session-abc',
         resumeAt: 'asst-uuid-xyz',
       });
@@ -491,6 +499,7 @@ describe('SessionStorage', () => {
     it('omits forkSource when not set', () => {
       const conversation: Conversation = {
         id: 'conv-no-fork',
+        providerId: 'claude' as ProviderId,
         title: 'No Fork',
         createdAt: 1700000000,
         updatedAt: 1700001000,
@@ -500,7 +509,7 @@ describe('SessionStorage', () => {
 
       const metadata = storage.toSessionMetadata(conversation);
 
-      expect(metadata.forkSource).toBeUndefined();
+      expect((metadata.providerState as any)?.forkSource).toBeUndefined();
     });
   });
 });

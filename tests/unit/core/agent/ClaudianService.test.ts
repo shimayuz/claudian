@@ -1315,10 +1315,10 @@ describe('ClaudianService', () => {
       // Set an existing session so captureSession detects a mismatch
       service.setSessionId('old-session');
 
-      // Apply fork state to mark as pending fork
-      service.applyForkState({
+      // Apply fork state to mark as pending fork via syncConversationState
+      service.syncConversationState({
         sessionId: null,
-        forkSource: { sessionId: 'old-session', resumeAt: 'asst-uuid-1' },
+        providerState: { forkSource: { sessionId: 'old-session', resumeAt: 'asst-uuid-1' } },
       });
       expect((service as any).pendingForkSession).toBe(true);
 
@@ -3172,64 +3172,60 @@ describe('ClaudianService', () => {
     });
   });
 
-  describe('applyForkState', () => {
+  describe('applyForkState (via syncConversationState)', () => {
     it('sets pendingForkSession and pendingResumeAt when conversation has forkSource but no sessionId', () => {
-      const conv = {
-        sessionId: null as string | null,
-        forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid-123' },
-      };
+      service.syncConversationState({
+        sessionId: null,
+        providerState: { forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid-123' } },
+      });
 
-      const result = service.applyForkState(conv);
-
-      expect(result).toBe('source-session');
+      expect(service.getSessionId()).toBe('source-session');
       expect((service as any).pendingForkSession).toBe(true);
       expect((service as any).pendingResumeAt).toBe('asst-uuid-123');
     });
 
     it('does not set pendingForkSession when conversation has its own sessionId', () => {
-      const conv = {
+      service.syncConversationState({
         sessionId: 'own-session',
-        forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid-123' },
-      };
+        providerState: { forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid-123' } },
+      });
 
-      const result = service.applyForkState(conv);
-
-      expect(result).toBe('own-session');
+      expect(service.getSessionId()).toBe('own-session');
       expect((service as any).pendingForkSession).toBe(false);
       expect((service as any).pendingResumeAt).toBeUndefined();
     });
 
-    it('returns null when no sessionId and no forkSource', () => {
-      const conv = { sessionId: null as string | null };
+    it('resolves to null when no sessionId and no forkSource', () => {
+      service.syncConversationState({
+        sessionId: null,
+      });
 
-      const result = service.applyForkState(conv);
-
-      expect(result).toBeNull();
+      expect(service.getSessionId()).toBeNull();
       expect((service as any).pendingForkSession).toBe(false);
     });
 
-    it('returns sessionId when only sessionId is present (no forkSource)', () => {
-      const conv = { sessionId: 'existing-session' };
+    it('resolves to sessionId when only sessionId is present (no forkSource)', () => {
+      service.syncConversationState({
+        sessionId: 'existing-session',
+      });
 
-      const result = service.applyForkState(conv);
-
-      expect(result).toBe('existing-session');
+      expect(service.getSessionId()).toBe('existing-session');
       expect((service as any).pendingForkSession).toBe(false);
     });
 
     it('clears pendingForkSession and pendingResumeAt from previous call', () => {
       // First call: set fork state
-      service.applyForkState({
+      service.syncConversationState({
         sessionId: null,
-        forkSource: { sessionId: 'source-1', resumeAt: 'asst-1' },
+        providerState: { forkSource: { sessionId: 'source-1', resumeAt: 'asst-1' } },
       });
       expect((service as any).pendingForkSession).toBe(true);
       expect((service as any).pendingResumeAt).toBe('asst-1');
 
       // Second call: conversation has own sessionId, should clear fork state
-      service.applyForkState({
+      service.syncConversationState({
         sessionId: 'own-session',
-        forkSource: { sessionId: 'source-1', resumeAt: 'asst-1' },
+        providerState: { forkSource: { sessionId: 'source-1', resumeAt: 'asst-1' } },
       });
       expect((service as any).pendingForkSession).toBe(false);
       expect((service as any).pendingResumeAt).toBeUndefined();
@@ -3237,28 +3233,28 @@ describe('ClaudianService', () => {
 
     it('clears pendingResumeAt when switching to non-fork conversation', () => {
       // Set fork state
-      service.applyForkState({
+      service.syncConversationState({
         sessionId: null,
-        forkSource: { sessionId: 'source-1', resumeAt: 'asst-1' },
+        providerState: { forkSource: { sessionId: 'source-1', resumeAt: 'asst-1' } },
       });
       expect((service as any).pendingResumeAt).toBe('asst-1');
 
       // Switch to a normal conversation (no forkSource)
-      service.applyForkState({ sessionId: 'normal-session' });
+      service.syncConversationState({ sessionId: 'normal-session' });
       expect((service as any).pendingResumeAt).toBeUndefined();
     });
 
     it('treats conversation as not pending when providerSessionId is set', () => {
-      const conv = {
-        sessionId: null as string | null,
-        providerSessionId: 'sdk-session-xyz',
-        forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid-123' },
-      };
+      service.syncConversationState({
+        sessionId: null,
+        providerState: {
+          providerSessionId: 'sdk-session-xyz',
+          forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid-123' },
+        },
+      });
 
-      const result = service.applyForkState(conv);
-
-      // Returns forkSource.sessionId via the ?? chain, but does NOT set pending fork state
-      expect(result).toBe('source-session');
+      // Resolves to forkSource.sessionId via the ?? chain, but does NOT set pending fork state
+      expect(service.getSessionId()).toBe('source-session');
       expect((service as any).pendingForkSession).toBe(false);
       expect((service as any).pendingResumeAt).toBeUndefined();
     });
@@ -3323,11 +3319,10 @@ describe('ClaudianService', () => {
     it('resolves fork state before updating the session', () => {
       const setSessionIdSpy = jest.spyOn(service, 'setSessionId').mockImplementation(() => {});
 
-      // Cast to simulate a full Conversation with Claude-specific fork fields
       service.syncConversationState({
         sessionId: null,
-        forkSource: { sessionId: 'source-session', resumeAt: 'assistant-uuid' },
-      } as any, ['/external/path']);
+        providerState: { forkSource: { sessionId: 'source-session', resumeAt: 'assistant-uuid' } },
+      }, ['/external/path']);
 
       expect(setSessionIdSpy).toHaveBeenCalledWith('source-session', ['/external/path']);
       expect((service as any).pendingForkSession).toBe(true);
@@ -3337,9 +3332,9 @@ describe('ClaudianService', () => {
     it('clears pending fork metadata when resetting conversation state', () => {
       const setSessionIdSpy = jest.spyOn(service, 'setSessionId').mockImplementation(() => {});
 
-      service.applyForkState({
+      service.syncConversationState({
         sessionId: null,
-        forkSource: { sessionId: 'source-session', resumeAt: 'assistant-uuid' },
+        providerState: { forkSource: { sessionId: 'source-session', resumeAt: 'assistant-uuid' } },
       });
 
       service.syncConversationState(null, ['/external/path']);

@@ -37,6 +37,19 @@ jest.mock('@/shared/modals/ForkTargetModal', () => ({
   chooseForkTarget: (...args: any[]) => mockChooseForkTarget(...args),
 }));
 
+const mockBuildForkProviderState = jest.fn(
+  (sourceSessionId: string, resumeAt: string) => ({
+    forkSource: { sessionId: sourceSessionId, resumeAt },
+  }),
+);
+jest.mock('@/core/providers', () => ({
+  ProviderRegistry: {
+    getConversationHistoryService: () => ({
+      buildForkProviderState: mockBuildForkProviderState,
+    }),
+  },
+}));
+
 function createMockPlugin(overrides: Record<string, any> = {}): any {
   return {
     app: {
@@ -1058,7 +1071,7 @@ describe('TabManager - closeTab Edge Cases', () => {
 
 describe('TabManager - forkToNewTab', () => {
   it('should propagate currentNote from context to forked conversation', async () => {
-    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1' });
+    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1', providerId: 'claude' });
     const mockUpdateConversation = jest.fn().mockResolvedValue(undefined);
 
     const plugin = createMockPlugin({
@@ -1085,7 +1098,7 @@ describe('TabManager - forkToNewTab', () => {
   });
 
   it('should not set currentNote when context has none', async () => {
-    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-2' });
+    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-2', providerId: 'claude' });
     const mockUpdateConversation = jest.fn().mockResolvedValue(undefined);
 
     const plugin = createMockPlugin({
@@ -1112,7 +1125,7 @@ describe('TabManager - forkToNewTab', () => {
 
 describe('TabManager - forkInCurrentTab', () => {
   it('should create fork conversation and switch active tab to it', async () => {
-    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1' });
+    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1', providerId: 'claude' });
     const mockUpdateConversation = jest.fn().mockResolvedValue(undefined);
     const mockSwitchTo = jest.fn().mockResolvedValue(undefined);
 
@@ -1157,7 +1170,7 @@ describe('TabManager - forkInCurrentTab', () => {
     expect(success).toBe(true);
     expect(mockCreateConversation).toHaveBeenCalled();
     expect(mockUpdateConversation).toHaveBeenCalledWith('fork-conv-1', expect.objectContaining({
-      forkSource: { sessionId: 'session-1', resumeAt: 'assistant-uuid-1' },
+      providerState: { forkSource: { sessionId: 'session-1', resumeAt: 'assistant-uuid-1' } },
       currentNote: 'notes/test.md',
     }));
     expect(mockSwitchTo).toHaveBeenCalledWith('fork-conv-1');
@@ -1165,7 +1178,7 @@ describe('TabManager - forkInCurrentTab', () => {
 
   it('should return false when no active tab exists', async () => {
     const plugin = createMockPlugin({
-      createConversation: jest.fn().mockResolvedValue({ id: 'fork-conv-2' }),
+      createConversation: jest.fn().mockResolvedValue({ id: 'fork-conv-2', providerId: 'claude' }),
       updateConversation: jest.fn().mockResolvedValue(undefined),
     });
 
@@ -1182,7 +1195,7 @@ describe('TabManager - forkInCurrentTab', () => {
   });
 
   it('should not check tab count limit', async () => {
-    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-3' });
+    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-3', providerId: 'claude' });
     const mockUpdateConversation = jest.fn().mockResolvedValue(undefined);
     const mockSwitchTo = jest.fn().mockResolvedValue(undefined);
 
@@ -1380,7 +1393,7 @@ describe('TabManager - handleForkRequest (modal dispatch)', () => {
   it('should fork to new tab when user selects "new-tab"', async () => {
     mockChooseForkTarget.mockResolvedValue('new-tab');
 
-    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1' });
+    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1', providerId: 'claude' });
     const mockUpdateConversation = jest.fn().mockResolvedValue(undefined);
 
     const plugin = createMockPlugin({
@@ -1415,7 +1428,7 @@ describe('TabManager - handleForkRequest (modal dispatch)', () => {
   it('should fork in current tab when user selects "current-tab"', async () => {
     mockChooseForkTarget.mockResolvedValue('current-tab');
 
-    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-2' });
+    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-2', providerId: 'claude' });
     const mockUpdateConversation = jest.fn().mockResolvedValue(undefined);
     const mockSwitchTo = jest.fn().mockResolvedValue(undefined);
 
@@ -1498,7 +1511,7 @@ describe('TabManager - forkToNewTab at max tabs', () => {
     const plugin = createMockPlugin();
     // MIN_TABS is 3, so maxTabs must be >= 3 to avoid clamping
     plugin.settings.maxTabs = 3;
-    plugin.createConversation = jest.fn().mockResolvedValue({ id: 'fork-conv' });
+    plugin.createConversation = jest.fn().mockResolvedValue({ id: 'fork-conv', providerId: 'claude' });
     plugin.updateConversation = jest.fn().mockResolvedValue(undefined);
 
     let tabCounter = 0;
@@ -1531,7 +1544,7 @@ describe('TabManager - forkToNewTab at max tabs', () => {
 
 describe('TabManager - createForkConversation', () => {
   it('should set forkSource with sessionId and resumeAt', async () => {
-    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1' });
+    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1', providerId: 'claude' });
     const mockUpdateConversation = jest.fn().mockResolvedValue(undefined);
 
     const plugin = createMockPlugin({
@@ -1549,12 +1562,12 @@ describe('TabManager - createForkConversation', () => {
     });
 
     expect(mockUpdateConversation).toHaveBeenCalledWith('fork-conv-1', expect.objectContaining({
-      forkSource: { sessionId: 'session-abc', resumeAt: 'asst-uuid-xyz' },
+      providerState: { forkSource: { sessionId: 'session-abc', resumeAt: 'asst-uuid-xyz' } },
     }));
   });
 
   it('should not set title when sourceTitle is undefined', async () => {
-    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1' });
+    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv-1', providerId: 'claude' });
     const mockUpdateConversation = jest.fn().mockResolvedValue(undefined);
 
     const plugin = createMockPlugin({
@@ -1579,7 +1592,7 @@ describe('TabManager - createForkConversation', () => {
 
 describe('TabManager - buildForkTitle', () => {
   function setupTitleTest(existingTitles: string[] = []) {
-    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv' });
+    const mockCreateConversation = jest.fn().mockResolvedValue({ id: 'fork-conv', providerId: 'claude' });
     const mockUpdateConversation = jest.fn().mockResolvedValue(undefined);
 
     const plugin = createMockPlugin({

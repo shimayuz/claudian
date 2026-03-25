@@ -10,7 +10,9 @@ import { Notice, Plugin } from 'obsidian';
 
 import { McpServerManager } from './core/mcp';
 import {
+  DEFAULT_CHAT_PROVIDER_ID,
   type ProviderCliResolver,
+  type ProviderId,
   ProviderRegistry,
 } from './core/providers';
 import type {
@@ -273,28 +275,23 @@ export default class ClaudianPlugin extends Plugin {
     const allMetadata = await this.storage.sessions.listMetadata();
     this.conversations = allMetadata.map(meta => {
       const resumeSessionId = meta.sessionId !== undefined ? meta.sessionId : meta.id;
-      const providerSessionId = meta.providerSessionId !== undefined
-        ? meta.providerSessionId
-        : (resumeSessionId ?? undefined);
 
       return {
         id: meta.id,
+        providerId: meta.providerId ?? DEFAULT_CHAT_PROVIDER_ID,
         title: meta.title,
         createdAt: meta.createdAt,
         updatedAt: meta.updatedAt,
         lastResponseAt: meta.lastResponseAt,
         sessionId: resumeSessionId,
-        providerSessionId,
-        previousProviderSessionIds: meta.previousProviderSessionIds,
+        providerState: meta.providerState,
         messages: [], // Messages are in SDK storage, loaded on demand
         currentNote: meta.currentNote,
         externalContextPaths: meta.externalContextPaths,
         enabledMcpServers: meta.enabledMcpServers,
         usage: meta.usage,
         titleGenerationStatus: meta.titleGenerationStatus,
-        subagentData: meta.subagentData,
         resumeAtMessageId: meta.resumeAtMessageId,
-        forkSource: meta.forkSource,
       };
     }).sort(
       (a, b) => (b.lastResponseAt ?? b.updatedAt) - (a.lastResponseAt ?? a.updatedAt)
@@ -517,7 +514,7 @@ export default class ClaudianPlugin extends Plugin {
     // Session invalidation is now handled per-tab by TabManager.
     // Clear resume sessionId from all conversations since they belong to the old provider.
     // Sessions are provider-specific (contain signed thinking blocks, etc.).
-    // NOTE: providerSessionId is retained for loading SDK-stored history.
+    // providerState.providerSessionId is retained for loading SDK-stored history.
     const invalidatedConversations: Conversation[] = [];
     for (const conv of this.conversations) {
       if (conv.sessionId) {
@@ -561,10 +558,9 @@ export default class ClaudianPlugin extends Plugin {
     return firstUserMsg.content.substring(0, 50) + (firstUserMsg.content.length > 50 ? '...' : '');
   }
 
-  /** Fork has no owned session yet; still referencing the source session for resume. */
   private async loadSdkMessagesForConversation(conversation: Conversation): Promise<void> {
     await ProviderRegistry
-      .getConversationHistoryService()
+      .getConversationHistoryService(conversation.providerId)
       .hydrateConversationHistory(conversation, getVaultPath(this.app));
   }
 
@@ -574,15 +570,20 @@ export default class ClaudianPlugin extends Plugin {
    * New conversations always use SDK-native storage.
    * The session ID may be captured after the first SDK response.
    */
-  async createConversation(sessionId?: string): Promise<Conversation> {
+  async createConversation(options?: {
+    providerId?: ProviderId;
+    sessionId?: string;
+  }): Promise<Conversation> {
+    const providerId = options?.providerId ?? DEFAULT_CHAT_PROVIDER_ID;
+    const sessionId = options?.sessionId;
     const conversationId = sessionId ?? this.generateConversationId();
     const conversation: Conversation = {
       id: conversationId,
+      providerId,
       title: this.generateDefaultTitle(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
       sessionId: sessionId ?? null,
-      providerSessionId: sessionId ?? undefined,
       messages: [],
     };
 
@@ -617,7 +618,7 @@ export default class ClaudianPlugin extends Plugin {
     this.conversations.splice(index, 1);
 
     await ProviderRegistry
-      .getConversationHistoryService()
+      .getConversationHistoryService(conversation.providerId)
       .deleteConversationSession(conversation, getVaultPath(this.app));
 
     await this.storage.sessions.deleteMetadata(id);
@@ -653,15 +654,17 @@ export default class ClaudianPlugin extends Plugin {
     const conversation = this.conversations.find(c => c.id === id);
     if (!conversation) return;
 
-    Object.assign(conversation, updates, { updatedAt: Date.now() });
+    // providerId is immutable — strip it from updates to prevent accidental mutation
+    const { providerId: _, ...safeUpdates } = updates;
+    Object.assign(conversation, safeUpdates, { updatedAt: Date.now() });
 
     await this.storage.sessions.saveMetadata(
       this.storage.sessions.toSessionMetadata(conversation)
     );
 
-    // Clear image data from memory after save (data is persisted by SDK or JSONL).
+    // Clear image data from memory after save (data is persisted by SDK).
     // Skip for pending forks: their deep-cloned images aren't in SDK storage yet.
-    if (!ProviderRegistry.getConversationHistoryService().isPendingForkConversation(conversation)) {
+    if (!ProviderRegistry.getConversationHistoryService(conversation.providerId).isPendingForkConversation(conversation)) {
       for (const msg of conversation.messages) {
         if (msg.images) {
           for (const img of msg.images) {
@@ -704,6 +707,7 @@ export default class ClaudianPlugin extends Plugin {
   getConversationList(): ConversationMeta[] {
     return this.conversations.map(c => ({
       id: c.id,
+      providerId: c.providerId,
       title: c.title,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,

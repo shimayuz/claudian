@@ -1,6 +1,7 @@
 import { Notice } from 'obsidian';
 
 import type { McpServerManager } from '../../../core/mcp';
+import { ProviderRegistry } from '../../../core/providers';
 import type { ChatRuntime } from '../../../core/runtime';
 import type { SlashCommand } from '../../../core/types';
 import { t } from '../../../i18n';
@@ -443,9 +444,13 @@ export class TabManager implements TabManagerInterface {
       ? this.buildForkTitle(context.sourceTitle, context.forkAtUserMessage)
       : undefined;
 
+    const forkProviderState = ProviderRegistry
+      .getConversationHistoryService(conversation.providerId)
+      .buildForkProviderState(context.sourceSessionId, context.resumeAt);
+
     await this.plugin.updateConversation(conversation.id, {
       messages: context.messages,
-      forkSource: { sessionId: context.sourceSessionId, resumeAt: context.resumeAt },
+      providerState: forkProviderState,
       ...(title && { title }),
       ...(context.currentNote && { currentNote: context.currentNote }),
     });

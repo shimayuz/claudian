@@ -415,6 +415,7 @@ describe('types.ts', () => {
     it('should store conversation with all required fields', () => {
       const conversation: Conversation = {
         id: 'conv-123',
+        providerId: 'claude',
         title: 'Test Conversation',
         createdAt: 1700000000000,
         updatedAt: 1700000001000,
@@ -433,6 +434,7 @@ describe('types.ts', () => {
     it('should allow null sessionId for new conversations', () => {
       const conversation: Conversation = {
         id: 'conv-456',
+        providerId: 'claude',
         title: 'New Chat',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -451,6 +453,7 @@ describe('types.ts', () => {
 
       const conversation: Conversation = {
         id: 'conv-789',
+        providerId: 'claude',
         title: 'Chat with Messages',
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -468,6 +471,7 @@ describe('types.ts', () => {
     it('should store conversation metadata without messages', () => {
       const meta: ConversationMeta = {
         id: 'conv-123',
+        providerId: 'claude',
         title: 'Test Conversation',
         createdAt: 1700000000000,
         updatedAt: 1700000001000,
@@ -486,6 +490,7 @@ describe('types.ts', () => {
     it('should have preview for empty conversations', () => {
       const meta: ConversationMeta = {
         id: 'conv-empty',
+        providerId: 'claude',
         title: 'Empty Chat',
         createdAt: Date.now(),
         updatedAt: Date.now(),

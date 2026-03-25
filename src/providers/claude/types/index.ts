@@ -27,6 +27,10 @@ export {
   type PluginScope,
 } from './plugins';
 export {
+  type ClaudeProviderState,
+  getClaudeState,
+} from './providerState';
+export {
   type CCPermissions,
   type CCSettings,
   type ClaudianSettings,

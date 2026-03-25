@@ -81,6 +81,8 @@ import { isSessionInitEvent, isStreamChunk } from '../sdk';
 import { buildPermissionUpdates } from '../security/ClaudePermissionUpdates';
 import { transformSDKMessage } from '../stream/transformClaudeMessage';
 import {
+  type ClaudeProviderState,
+  getClaudeState,
   isAdaptiveThinkingModel,
   type PermissionMode,
   THINKING_BUDGETS,
@@ -218,15 +220,16 @@ export class ClaudianService implements ChatRuntime {
   }
 
   /** One-shot: consumed on the next query, then cleared by routeMessage on session init. */
-  applyForkState(conv: Pick<Conversation, 'sessionId' | 'providerSessionId' | 'forkSource'>): string | null {
-    const isPending = !conv.sessionId && !conv.providerSessionId && !!conv.forkSource;
+  private applyForkState(conv: ChatRuntimeConversationState): string | null {
+    const state = getClaudeState(conv.providerState);
+    const isPending = !conv.sessionId && !state.providerSessionId && !!state.forkSource;
     this.pendingForkSession = isPending;
     if (isPending) {
-      this.pendingResumeAt = conv.forkSource!.resumeAt;
+      this.pendingResumeAt = state.forkSource!.resumeAt;
     } else {
       this.pendingResumeAt = undefined;
     }
-    return conv.sessionId ?? conv.forkSource?.sessionId ?? null;
+    return conv.sessionId ?? state.forkSource?.sessionId ?? null;
   }
 
   syncConversationState(
@@ -240,10 +243,7 @@ export class ClaudianService implements ChatRuntime {
       return;
     }
 
-    // The interface only requires `sessionId`, but callers pass a full Conversation
-    // which also carries Claude-specific fork/session fields.
-    const conv = conversation as Pick<Conversation, 'sessionId' | 'providerSessionId' | 'forkSource'>;
-    const resolvedSessionId = this.applyForkState(conv);
+    const resolvedSessionId = this.applyForkState(conversation);
     this.setSessionId(resolvedSessionId, externalContextPaths);
   }
 
@@ -252,16 +252,17 @@ export class ClaudianService implements ChatRuntime {
     sessionInvalidated: boolean;
   }): SessionUpdateResult {
     const sessionId = this.getSessionId();
+    const existingState = getClaudeState(conversation?.providerState);
 
-    const oldSdkSessionId = conversation?.providerSessionId;
+    const oldSdkSessionId = existingState.providerSessionId;
     const sessionChanged = sessionId && oldSdkSessionId && sessionId !== oldSdkSessionId;
     const previousProviderSessionIds = sessionChanged
-      ? [...new Set([...(conversation?.previousProviderSessionIds || []), oldSdkSessionId])]
-      : conversation?.previousProviderSessionIds;
+      ? [...new Set([...(existingState.previousProviderSessionIds || []), oldSdkSessionId])]
+      : existingState.previousProviderSessionIds;
 
-    const isForkSourceOnly = !!conversation?.forkSource &&
-      !conversation?.providerSessionId &&
-      sessionId === conversation.forkSource.sessionId;
+    const isForkSourceOnly = !!existingState.forkSource &&
+      !existingState.providerSessionId &&
+      sessionId === existingState.forkSource.sessionId;
 
     let resolvedSessionId: string | null;
     if (sessionInvalidated) {
@@ -272,24 +273,30 @@ export class ClaudianService implements ChatRuntime {
       resolvedSessionId = sessionId ?? conversation?.sessionId ?? null;
     }
 
-    const updates: Partial<Conversation> = {
-      sessionId: resolvedSessionId,
-      providerSessionId: sessionId && !isForkSourceOnly ? sessionId : conversation?.providerSessionId,
+    const newProviderState: ClaudeProviderState = {
+      ...existingState,
+      providerSessionId: sessionId && !isForkSourceOnly ? sessionId : existingState.providerSessionId,
       previousProviderSessionIds,
     };
 
-    if (conversation?.forkSource && sessionId && sessionId !== conversation.forkSource.sessionId) {
-      updates.forkSource = undefined;
+    if (existingState.forkSource && sessionId && sessionId !== existingState.forkSource.sessionId) {
+      delete newProviderState.forkSource;
     }
 
-    return { updates };
+    return {
+      updates: {
+        sessionId: resolvedSessionId,
+        providerState: newProviderState as Record<string, unknown>,
+      },
+    };
   }
 
   resolveSessionIdForFork(conversation: Conversation | null): string | null {
     const sessionId = this.getSessionId();
     if (sessionId) return sessionId;
     if (!conversation) return null;
-    return conversation.providerSessionId ?? conversation.sessionId ?? conversation.forkSource?.sessionId ?? null;
+    const state = getClaudeState(conversation.providerState);
+    return state.providerSessionId ?? conversation.sessionId ?? state.forkSource?.sessionId ?? null;
   }
 
   async loadSubagentToolCalls(agentId: string): Promise<ToolCallInfo[]> {

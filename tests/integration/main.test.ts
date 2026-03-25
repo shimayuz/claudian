@@ -340,7 +340,7 @@ describe('ClaudianPlugin', () => {
     it('invalidates sessions when env hash changes', async () => {
       await plugin.onload();
 
-      const conv = await plugin.createConversation('session-123');
+      const conv = await plugin.createConversation({ sessionId: 'session-123' });
       const saveMetadataSpy = jest.spyOn(plugin.storage.sessions, 'saveMetadata');
       saveMetadataSpy.mockClear();
 
@@ -711,9 +711,10 @@ describe('ClaudianPlugin', () => {
         title: 'Multi Session Chat',
         createdAt: timestamp,
         updatedAt: timestamp,
-        providerSessionId: 'session-B',
-        previousProviderSessionIds: ['session-A'],
-
+        providerState: {
+          providerSessionId: 'session-B',
+          previousProviderSessionIds: ['session-A'],
+        },
       });
 
       mockApp.vault.adapter.exists.mockImplementation(async (path: string) => {
@@ -742,8 +743,8 @@ describe('ClaudianPlugin', () => {
       await plugin.loadSettings();
 
       const loaded = await plugin.getConversationById('conv-multi-session');
-      expect(loaded?.previousProviderSessionIds).toEqual(['session-A']);
-      expect(loaded?.providerSessionId).toBe('session-B');
+      expect((loaded?.providerState as any)?.previousProviderSessionIds).toEqual(['session-A']);
+      expect((loaded?.providerState as any)?.providerSessionId).toBe('session-B');
     });
 
     it('should preserve previousProviderSessionIds through conversation updates', async () => {
@@ -751,14 +752,15 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        providerSessionId: 'session-B',
-        previousProviderSessionIds: ['session-A'],
-
+        providerState: {
+          providerSessionId: 'session-B',
+          previousProviderSessionIds: ['session-A'],
+        },
       });
 
       const updated = await plugin.getConversationById(conv.id);
-      expect(updated?.previousProviderSessionIds).toEqual(['session-A']);
-      expect(updated?.providerSessionId).toBe('session-B');
+      expect((updated?.providerState as any)?.previousProviderSessionIds).toEqual(['session-A']);
+      expect((updated?.providerState as any)?.providerSessionId).toBe('session-B');
 
       // Further update should preserve previousProviderSessionIds
       await plugin.updateConversation(conv.id, {
@@ -766,7 +768,7 @@ describe('ClaudianPlugin', () => {
       });
 
       const afterTitleUpdate = await plugin.getConversationById(conv.id);
-      expect(afterTitleUpdate?.previousProviderSessionIds).toEqual(['session-A']);
+      expect((afterTitleUpdate?.providerState as any)?.previousProviderSessionIds).toEqual(['session-A']);
     });
 
     it('should handle empty previousProviderSessionIds array', async () => {
@@ -774,13 +776,14 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-        providerSessionId: 'session-A',
-        previousProviderSessionIds: [],
-
+        providerState: {
+          providerSessionId: 'session-A',
+          previousProviderSessionIds: [],
+        },
       });
 
       const updated = await plugin.getConversationById(conv.id);
-      expect(updated?.previousProviderSessionIds).toEqual([]);
+      expect((updated?.providerState as any)?.previousProviderSessionIds).toEqual([]);
     });
   });
 
@@ -790,13 +793,12 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        forkSource: { sessionId: 'source-session-abc', resumeAt: 'asst-uuid-cutoff' },
-        // No sessionId or providerSessionId → isPendingFork returns true
+        providerState: {
+          forkSource: { sessionId: 'source-session-abc', resumeAt: 'asst-uuid-cutoff' },
+          // No providerSessionId → isPendingFork returns true
+          providerSessionId: undefined,
+        },
         sessionId: null,
-        providerSessionId: undefined,
-
-
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -836,10 +838,10 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid' },
-        providerSessionId: 'own-session-id',
-
+        providerState: {
+          forkSource: { sessionId: 'source-session', resumeAt: 'asst-uuid' },
+          providerSessionId: 'own-session-id',
+        },
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -867,9 +869,27 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        providerSessionId: 'session-subagent-recovery',
-
+        providerState: {
+          providerSessionId: 'session-subagent-recovery',
+          subagentData: {
+            'task-1': {
+              id: 'task-1',
+              description: 'Recovered subagent',
+              status: 'completed',
+              result: 'Recovered result',
+              toolCalls: [
+                {
+                  id: 'sub-tool-1',
+                  name: 'Read',
+                  input: { file_path: 'README.md' },
+                  status: 'completed',
+                  result: 'content',
+                } as any,
+              ],
+              isExpanded: false,
+            } as any,
+          },
+        },
         messages: [
           {
             id: 'assistant-1',
@@ -889,24 +909,6 @@ describe('ClaudianPlugin', () => {
             contentBlocks: [{ type: 'text', content: 'Done' }] as any,
           } as any,
         ],
-        subagentData: {
-          'task-1': {
-            id: 'task-1',
-            description: 'Recovered subagent',
-            status: 'completed',
-            result: 'Recovered result',
-            toolCalls: [
-              {
-                id: 'sub-tool-1',
-                name: 'Read',
-                input: { file_path: 'README.md' },
-                status: 'completed',
-                result: 'content',
-              } as any,
-            ],
-            isExpanded: false,
-          } as any,
-        },
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -945,9 +947,21 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        providerSessionId: 'session-subagent-merge',
-
+        providerState: {
+          providerSessionId: 'session-subagent-merge',
+          subagentData: {
+            'task-merge-1': {
+              id: 'task-merge-1',
+              description: 'Recovered subagent',
+              mode: 'async',
+              asyncStatus: 'completed',
+              status: 'completed',
+              result: 'Short stale result',
+              toolCalls: [],
+              isExpanded: false,
+            } as any,
+          },
+        },
         messages: [
           {
             id: 'assistant-merge',
@@ -966,18 +980,6 @@ describe('ClaudianPlugin', () => {
             contentBlocks: [{ type: 'subagent', subagentId: 'task-merge-1', mode: 'async' }] as any,
           } as any,
         ],
-        subagentData: {
-          'task-merge-1': {
-            id: 'task-merge-1',
-            description: 'Recovered subagent',
-            mode: 'async',
-            asyncStatus: 'completed',
-            status: 'completed',
-            result: 'Short stale result',
-            toolCalls: [],
-            isExpanded: false,
-          } as any,
-        },
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -1006,23 +1008,23 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        providerSessionId: 'session-subagent-cache-richer',
-
-        messages: [],
-        subagentData: {
-          'task-merge-2': {
-            id: 'task-merge-2',
-            description: 'Recovered subagent',
-            mode: 'async',
-            asyncStatus: 'completed',
-            status: 'completed',
-            result: 'Recovered final result with full details',
-            toolCalls: [],
-            isExpanded: false,
-            agentId: 'agent-cache-richer',
-          } as any,
+        providerState: {
+          providerSessionId: 'session-subagent-cache-richer',
+          subagentData: {
+            'task-merge-2': {
+              id: 'task-merge-2',
+              description: 'Recovered subagent',
+              mode: 'async',
+              asyncStatus: 'completed',
+              status: 'completed',
+              result: 'Recovered final result with full details',
+              toolCalls: [],
+              isExpanded: false,
+              agentId: 'agent-cache-richer',
+            } as any,
+          },
         },
+        messages: [],
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -1075,9 +1077,21 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        providerSessionId: 'session-sync-subagent-cleanup',
-
+        providerState: {
+          providerSessionId: 'session-sync-subagent-cleanup',
+          subagentData: {
+            'task-sync-1': {
+              id: 'task-sync-1',
+              description: 'Recovered sync subagent',
+              mode: 'sync',
+              asyncStatus: 'completed',
+              status: 'completed',
+              result: 'Recovered sync result',
+              toolCalls: [],
+              isExpanded: false,
+            } as any,
+          },
+        },
         messages: [
           {
             id: 'assistant-sync',
@@ -1096,18 +1110,6 @@ describe('ClaudianPlugin', () => {
             contentBlocks: [{ type: 'subagent', subagentId: 'task-sync-1', mode: 'sync' }] as any,
           } as any,
         ],
-        subagentData: {
-          'task-sync-1': {
-            id: 'task-sync-1',
-            description: 'Recovered sync subagent',
-            mode: 'sync',
-            asyncStatus: 'completed',
-            status: 'completed',
-            result: 'Recovered sync result',
-            toolCalls: [],
-            isExpanded: false,
-          } as any,
-        },
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -1131,22 +1133,22 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        providerSessionId: 'session-async-sdk-terminal',
-
-        messages: [],
-        subagentData: {
-          'task-async-sdk-terminal': {
-            id: 'task-async-sdk-terminal',
-            description: 'Cached async subagent',
-            mode: 'async',
-            asyncStatus: 'running',
-            status: 'running',
-            result: 'Still running',
-            toolCalls: [],
-            isExpanded: false,
-          } as any,
+        providerState: {
+          providerSessionId: 'session-async-sdk-terminal',
+          subagentData: {
+            'task-async-sdk-terminal': {
+              id: 'task-async-sdk-terminal',
+              description: 'Cached async subagent',
+              mode: 'async',
+              asyncStatus: 'running',
+              status: 'running',
+              result: 'Still running',
+              toolCalls: [],
+              isExpanded: false,
+            } as any,
+          },
         },
+        messages: [],
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -1201,23 +1203,23 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        providerSessionId: 'session-async-cache-terminal',
-
-        messages: [],
-        subagentData: {
-          'task-async-cache-terminal': {
-            id: 'task-async-cache-terminal',
-            description: 'Cached async subagent',
-            mode: 'async',
-            asyncStatus: 'completed',
-            status: 'completed',
-            result: 'Recovered final result',
-            toolCalls: [],
-            isExpanded: false,
-            agentId: 'agent-cache-terminal',
-          } as any,
+        providerState: {
+          providerSessionId: 'session-async-cache-terminal',
+          subagentData: {
+            'task-async-cache-terminal': {
+              id: 'task-async-cache-terminal',
+              description: 'Cached async subagent',
+              mode: 'async',
+              asyncStatus: 'completed',
+              status: 'completed',
+              result: 'Recovered final result',
+              toolCalls: [],
+              isExpanded: false,
+              agentId: 'agent-cache-terminal',
+            } as any,
+          },
         },
+        messages: [],
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -1272,9 +1274,21 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        providerSessionId: 'session-async-subagent-recovery',
-
+        providerState: {
+          providerSessionId: 'session-async-subagent-recovery',
+          subagentData: {
+            'task-async-1': {
+              id: 'task-async-1',
+              description: 'Recovered async subagent',
+              mode: 'async',
+              asyncStatus: 'completed',
+              status: 'completed',
+              result: 'Recovered async result',
+              toolCalls: [],
+              isExpanded: false,
+            } as any,
+          },
+        },
         messages: [
           {
             id: 'assistant-1',
@@ -1293,18 +1307,6 @@ describe('ClaudianPlugin', () => {
             contentBlocks: [{ type: 'text', content: 'Started' }] as any,
           } as any,
         ],
-        subagentData: {
-          'task-async-1': {
-            id: 'task-async-1',
-            description: 'Recovered async subagent',
-            mode: 'async',
-            asyncStatus: 'completed',
-            status: 'completed',
-            result: 'Recovered async result',
-            toolCalls: [],
-            isExpanded: false,
-          } as any,
-        },
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -1341,9 +1343,22 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        providerSessionId: 'session-async-subagent-tools',
-
+        providerState: {
+          providerSessionId: 'session-async-subagent-tools',
+          subagentData: {
+            'task-async-tools': {
+              id: 'task-async-tools',
+              description: 'Recovered async subagent',
+              mode: 'async',
+              asyncStatus: 'completed',
+              status: 'completed',
+              result: 'Recovered async result',
+              agentId: 'agent-a123',
+              toolCalls: [],
+              isExpanded: false,
+            } as any,
+          },
+        },
         messages: [
           {
             id: 'assistant-1',
@@ -1362,19 +1377,6 @@ describe('ClaudianPlugin', () => {
             contentBlocks: [{ type: 'subagent', subagentId: 'task-async-tools', mode: 'async' }] as any,
           } as any,
         ],
-        subagentData: {
-          'task-async-tools': {
-            id: 'task-async-tools',
-            description: 'Recovered async subagent',
-            mode: 'async',
-            asyncStatus: 'completed',
-            status: 'completed',
-            result: 'Recovered async result',
-            agentId: 'agent-a123',
-            toolCalls: [],
-            isExpanded: false,
-          } as any,
-        },
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);
@@ -1421,9 +1423,21 @@ describe('ClaudianPlugin', () => {
 
       const conv = await plugin.createConversation();
       await plugin.updateConversation(conv.id, {
-
-        providerSessionId: 'session-async-subagent-fallback',
-
+        providerState: {
+          providerSessionId: 'session-async-subagent-fallback',
+          subagentData: {
+            'task-async-orphan': {
+              id: 'task-async-orphan',
+              description: 'Recovered async orphan subagent',
+              mode: 'async',
+              asyncStatus: 'running',
+              status: 'running',
+              result: 'Running in background',
+              toolCalls: [],
+              isExpanded: false,
+            } as any,
+          },
+        },
         messages: [
           {
             id: 'assistant-1',
@@ -1433,18 +1447,6 @@ describe('ClaudianPlugin', () => {
             contentBlocks: [{ type: 'text', content: 'Background work started' }] as any,
           } as any,
         ],
-        subagentData: {
-          'task-async-orphan': {
-            id: 'task-async-orphan',
-            description: 'Recovered async orphan subagent',
-            mode: 'async',
-            asyncStatus: 'running',
-            status: 'running',
-            result: 'Running in background',
-            toolCalls: [],
-            isExpanded: false,
-          } as any,
-        },
       });
 
       const existsSpy = jest.spyOn(sdkSession, 'sdkSessionExists').mockReturnValue(true);

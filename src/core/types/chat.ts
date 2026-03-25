@@ -2,8 +2,9 @@
  * Chat and conversation type definitions.
  */
 
+import type { ProviderId } from '../providers/types';
 import type { SDKToolUseResult } from './diff';
-import type { SubagentInfo, SubagentMode, ToolCallInfo } from './tools';
+import type { SubagentMode, ToolCallInfo } from './tools';
 
 /** Fork origin reference: identifies the source session and checkpoint. */
 export interface ForkSource {
@@ -67,24 +68,15 @@ export interface ChatMessage {
 /** Persisted conversation with messages and session state. */
 export interface Conversation {
   id: string;
+  providerId: ProviderId;
   title: string;
   createdAt: number;
   updatedAt: number;
   /** Timestamp when the last agent response completed. */
   lastResponseAt?: number;
   sessionId: string | null;
-  /**
-   * Current provider session ID for provider-native history.
-   * May differ from sessionId when the provider creates a new session (session expired, auth changed).
-   * Used for loading provider-stored history. Falls back to sessionId if not set.
-   */
-  providerSessionId?: string;
-  /**
-   * Previous provider session IDs from session rebuilds.
-   * When resume fails and the provider creates a new session, the old providerSessionId is moved here.
-   * Used to load and merge messages from all session files for display.
-   */
-  previousProviderSessionIds?: string[];
+  /** Opaque provider-owned state bag (session tracking, fork metadata, etc.). */
+  providerState?: Record<string, unknown>;
   messages: ChatMessage[];
   currentNote?: string;
   /** Session-specific external context paths (directories with full access). Resets on new session. */
@@ -95,20 +87,14 @@ export interface Conversation {
   titleGenerationStatus?: 'pending' | 'success' | 'failed';
   /** UI-enabled MCP servers for this session (context-saving servers activated via selector). */
   enabledMcpServers?: string[];
-  /**
-   * Cached subagent data for Task tool operations.
-   * Loaded from metadata for native sessions to restore tool count and status on reload.
-   */
-  subagentData?: Record<string, SubagentInfo>;
   /** Assistant checkpoint identifier for resumeAtMessageId after rewind. */
   resumeAtMessageId?: string;
-  /** Fork origin: source session to resume + fork from. Cleared after first SDK session init. */
-  forkSource?: ForkSource;
 }
 
 /** Lightweight conversation metadata for the history dropdown. */
 export interface ConversationMeta {
   id: string;
+  providerId: ProviderId;
   title: string;
   createdAt: number;
   updatedAt: number;
@@ -126,6 +112,7 @@ export interface ConversationMeta {
  */
 export interface SessionMetadata {
   id: string;
+  providerId?: ProviderId;
   title: string;
   titleGenerationStatus?: 'pending' | 'success' | 'failed';
   createdAt: number;
@@ -133,31 +120,14 @@ export interface SessionMetadata {
   lastResponseAt?: number;
   /** Session ID used for provider resume (may be cleared when invalidated). */
   sessionId?: string | null;
-  /**
-   * Current provider session ID. May differ from id when the provider creates a new session.
-   * Used to locate the correct provider session file for message loading.
-   */
-  providerSessionId?: string;
-  /**
-   * Previous provider session IDs from session rebuilds.
-   * When resume fails and the provider creates a new session, the old providerSessionId is moved here.
-   * Used to load and merge messages from all session files for display.
-   */
-  previousProviderSessionIds?: string[];
+  /** Opaque provider-owned state bag. */
+  providerState?: Record<string, unknown>;
   currentNote?: string;
   externalContextPaths?: string[];
   enabledMcpServers?: string[];
   usage?: UsageInfo;
-  /**
-   * Subagent data for Task tool operations.
-   * Maps toolUseId to subagent info (tool count, status, result).
-   * Stored here because provider-native session files do not preserve this UI-level data.
-   */
-  subagentData?: Record<string, SubagentInfo>;
   /** Assistant checkpoint identifier for resumeAtMessageId after rewind. */
   resumeAtMessageId?: string;
-  /** Fork origin: source session to resume + fork from. Cleared after first SDK session init. */
-  forkSource?: ForkSource;
 }
 
 /** Normalized stream chunk emitted by the active provider runtime. */

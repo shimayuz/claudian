@@ -64,6 +64,8 @@ export interface ProviderConversationHistoryService {
   ): Promise<void>;
   resolveSessionIdForConversation(conversation: Conversation | null): string | null;
   isPendingForkConversation(conversation: Conversation): boolean;
+  /** Builds opaque provider state for a forked conversation. */
+  buildForkProviderState(sourceSessionId: string, resumeAt: string): Record<string, unknown>;
 }
 
 export type ProviderTaskTerminalStatus = Extract<ToolCallInfo['status'], 'completed' | 'error'>;

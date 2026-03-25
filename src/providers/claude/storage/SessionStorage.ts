@@ -5,6 +5,7 @@
  * Messages are stored by the SDK in ~/.claude/ (provider-native storage).
  */
 
+import { DEFAULT_CHAT_PROVIDER_ID } from '../../../core/providers/types';
 import type { VaultFileAdapter } from '../../../core/storage/VaultFileAdapter';
 import { isSubagentToolName } from '../../../core/tools/toolNames';
 import type {
@@ -12,11 +13,51 @@ import type {
   Conversation,
   ConversationMeta,
   SessionMetadata,
-  SubagentInfo,
 } from '../../../core/types';
+import type { SubagentInfo } from '../../../core/types/tools';
+import type { ClaudeProviderState } from '../types';
 
 /** Path to sessions folder relative to vault root. */
 export const SESSIONS_PATH = '.claude/sessions';
+
+/** Legacy metadata shape before providerId/providerState migration. */
+interface LegacySessionMetadata {
+  providerSessionId?: string;
+  previousProviderSessionIds?: string[];
+  forkSource?: { sessionId: string; resumeAt: string };
+  subagentData?: Record<string, SubagentInfo>;
+}
+
+/**
+ * Migrates legacy Claude-specific top-level fields into providerState.
+ * Returns the metadata with providerId defaulted and legacy fields folded.
+ */
+function migrateMetadata(raw: SessionMetadata & LegacySessionMetadata): SessionMetadata {
+  if (!raw.providerId) {
+    raw.providerId = DEFAULT_CHAT_PROVIDER_ID;
+  }
+
+  // Fold legacy top-level Claude fields into providerState
+  if (!raw.providerState) {
+    const legacy: ClaudeProviderState = {};
+    if (raw.providerSessionId !== undefined) legacy.providerSessionId = raw.providerSessionId;
+    if (raw.previousProviderSessionIds) legacy.previousProviderSessionIds = raw.previousProviderSessionIds;
+    if (raw.forkSource) legacy.forkSource = raw.forkSource;
+    if (raw.subagentData) legacy.subagentData = raw.subagentData;
+
+    if (Object.keys(legacy).length > 0) {
+      raw.providerState = legacy as Record<string, unknown>;
+    }
+  }
+
+  // Clean legacy fields from the object
+  delete raw.providerSessionId;
+  delete raw.previousProviderSessionIds;
+  delete raw.forkSource;
+  delete raw.subagentData;
+
+  return raw;
+}
 
 export class SessionStorage {
   constructor(private adapter: VaultFileAdapter) { }
@@ -40,7 +81,8 @@ export class SessionStorage {
       }
 
       const content = await this.adapter.read(filePath);
-      return JSON.parse(content) as SessionMetadata;
+      const raw = JSON.parse(content) as SessionMetadata & LegacySessionMetadata;
+      return migrateMetadata(raw);
     } catch {
       return null;
     }
@@ -62,8 +104,8 @@ export class SessionStorage {
       for (const filePath of metaFiles) {
         try {
           const content = await this.adapter.read(filePath);
-          const meta = JSON.parse(content) as SessionMetadata;
-          metas.push(meta);
+          const raw = JSON.parse(content) as SessionMetadata & LegacySessionMetadata;
+          metas.push(migrateMetadata(raw));
         } catch {
           // Skip files that fail to load
         }
@@ -81,6 +123,7 @@ export class SessionStorage {
 
     const metas: ConversationMeta[] = nativeMetas.map(meta => ({
       id: meta.id,
+      providerId: meta.providerId ?? DEFAULT_CHAT_PROVIDER_ID,
       title: meta.title,
       createdAt: meta.createdAt,
       updatedAt: meta.updatedAt,
@@ -98,23 +141,29 @@ export class SessionStorage {
   toSessionMetadata(conversation: Conversation): SessionMetadata {
     const subagentData = this.extractSubagentData(conversation.messages);
 
+    // Merge extracted subagentData into providerState for persistence
+    const providerState: Record<string, unknown> = { ...conversation.providerState };
+    if (Object.keys(subagentData).length > 0) {
+      providerState.subagentData = subagentData;
+    } else {
+      delete providerState.subagentData;
+    }
+
     return {
       id: conversation.id,
+      providerId: conversation.providerId,
       title: conversation.title,
       titleGenerationStatus: conversation.titleGenerationStatus,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
       lastResponseAt: conversation.lastResponseAt,
       sessionId: conversation.sessionId,
-      providerSessionId: conversation.providerSessionId,
-      previousProviderSessionIds: conversation.previousProviderSessionIds,
+      providerState: Object.keys(providerState).length > 0 ? providerState : undefined,
       currentNote: conversation.currentNote,
       externalContextPaths: conversation.externalContextPaths,
       enabledMcpServers: conversation.enabledMcpServers,
       usage: conversation.usage,
-      subagentData: Object.keys(subagentData).length > 0 ? subagentData : undefined,
       resumeAtMessageId: conversation.resumeAtMessageId,
-      forkSource: conversation.forkSource,
     };
   }
 

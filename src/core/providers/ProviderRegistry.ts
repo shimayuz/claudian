@@ -15,10 +15,8 @@ import {
   type TitleGenerationService,
 } from './types';
 
-type RegisteredProviderId = typeof DEFAULT_CHAT_PROVIDER_ID;
-
 function getProviderRegistration(providerId: ProviderId): ProviderRegistration {
-  const registration = PROVIDER_REGISTRATIONS[providerId as RegisteredProviderId];
+  const registration = PROVIDER_REGISTRATIONS[providerId];
   if (!registration) {
     throw new Error(`Provider "${providerId}" is not registered.`);
   }

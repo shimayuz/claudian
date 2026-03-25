@@ -4,9 +4,11 @@ import type {
   AsyncSubagentStatus,
   ChatMessage,
   Conversation,
+  ForkSource,
   SubagentInfo,
   ToolCallInfo,
 } from '../../../core/types';
+import { type ClaudeProviderState, getClaudeState } from '../types';
 import {
   deleteSDKSession,
   loadSDKSessionMessages,
@@ -286,13 +288,23 @@ export class ClaudeConversationHistoryService implements ProviderConversationHis
   private hydratedConversationIds = new Set<string>();
 
   isPendingForkConversation(conversation: Conversation): boolean {
-    return !!conversation.forkSource
-      && !conversation.providerSessionId
+    const state = getClaudeState(conversation.providerState);
+    return !!state.forkSource
+      && !state.providerSessionId
       && !conversation.sessionId;
   }
 
   resolveSessionIdForConversation(conversation: Conversation | null): string | null {
-    return conversation?.providerSessionId ?? conversation?.sessionId ?? conversation?.forkSource?.sessionId ?? null;
+    if (!conversation) return null;
+    const state = getClaudeState(conversation.providerState);
+    return state.providerSessionId ?? conversation.sessionId ?? state.forkSource?.sessionId ?? null;
+  }
+
+  buildForkProviderState(sourceSessionId: string, resumeAt: string): Record<string, unknown> {
+    const state: ClaudeProviderState = {
+      forkSource: { sessionId: sourceSessionId, resumeAt } satisfies ForkSource,
+    };
+    return state as Record<string, unknown>;
   }
 
   async hydrateConversationHistory(
@@ -303,12 +315,13 @@ export class ClaudeConversationHistoryService implements ProviderConversationHis
       return;
     }
 
+    const state = getClaudeState(conversation.providerState);
     const isPendingFork = this.isPendingForkConversation(conversation);
     const allSessionIds: string[] = isPendingFork
-      ? [conversation.forkSource!.sessionId]
+      ? [state.forkSource!.sessionId]
       : [
-          ...(conversation.previousProviderSessionIds || []),
-          conversation.providerSessionId ?? conversation.sessionId,
+          ...(state.previousProviderSessionIds || []),
+          state.providerSessionId ?? conversation.sessionId,
         ].filter((id): id is string => !!id);
 
     if (allSessionIds.length === 0) {
@@ -321,8 +334,8 @@ export class ClaudeConversationHistoryService implements ProviderConversationHis
     let successCount = 0;
 
     const currentSessionId = isPendingFork
-      ? conversation.forkSource!.sessionId
-      : (conversation.providerSessionId ?? conversation.sessionId);
+      ? state.forkSource!.sessionId
+      : (state.providerSessionId ?? conversation.sessionId);
 
     for (const sessionId of allSessionIds) {
       if (!sdkSessionExists(vaultPath, sessionId)) {
@@ -332,7 +345,7 @@ export class ClaudeConversationHistoryService implements ProviderConversationHis
 
       const isCurrentSession = sessionId === currentSessionId;
       const truncateAt = isCurrentSession
-        ? (isPendingFork ? conversation.forkSource!.resumeAt : conversation.resumeAtMessageId)
+        ? (isPendingFork ? state.forkSource!.resumeAt : conversation.resumeAtMessageId)
         : undefined;
       const result = await loadSDKSessionMessages(vaultPath, sessionId, truncateAt);
 
@@ -358,13 +371,13 @@ export class ClaudeConversationHistoryService implements ProviderConversationHis
       ...filteredSdkMessages,
     ]).sort((a, b) => a.timestamp - b.timestamp);
 
-    if (conversation.subagentData) {
+    if (state.subagentData) {
       await enrichAsyncSubagentToolCalls(
-        conversation.subagentData,
+        state.subagentData,
         vaultPath,
         allSessionIds,
       );
-      applySubagentData(merged, conversation.subagentData);
+      applySubagentData(merged, state.subagentData);
     }
 
     conversation.messages = merged;
@@ -375,7 +388,8 @@ export class ClaudeConversationHistoryService implements ProviderConversationHis
     conversation: Conversation,
     vaultPath: string | null,
   ): Promise<void> {
-    const sessionId = conversation.providerSessionId ?? conversation.sessionId;
+    const state = getClaudeState(conversation.providerState);
+    const sessionId = state.providerSessionId ?? conversation.sessionId;
     if (!vaultPath || !sessionId) {
       return;
     }

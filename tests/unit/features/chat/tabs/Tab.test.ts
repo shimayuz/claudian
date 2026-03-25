@@ -378,6 +378,7 @@ describe('Tab - Creation', () => {
       const options = createMockOptions({
         conversation: {
           id: 'conv-123',
+          providerId: 'claude',
           title: 'Test Conversation',
           messages: [],
           sessionId: null,
@@ -493,6 +494,7 @@ describe('Tab - Service Initialization', () => {
 
       const conversation = {
         id: 'conv-1',
+        providerId: 'claude' as const,
         title: 'Existing Conversation',
         messages: [{ id: 'msg-1', role: 'user' as const, content: 'test', timestamp: Date.now() }],
         sessionId: 'session-123',
@@ -2269,7 +2271,7 @@ describe('Tab - handleForkRequest', () => {
   it('should fall back to conversation session ID when service has none', async () => {
     const plugin = createMockPlugin({
       getConversationSync: jest.fn().mockReturnValue({
-        providerSessionId: 'conv-session-xyz',
+        providerState: { providerSessionId: 'conv-session-xyz' },
         title: 'Fallback Chat',
       }),
     });
@@ -2337,7 +2339,7 @@ describe('Tab - handleForkRequest', () => {
     const plugin = createMockPlugin({
       getConversationSync: jest.fn().mockReturnValue({
         title: 'Nested Fork',
-        forkSource: { sessionId: 'original-source-session', resumeAt: 'asst-prev' },
+        providerState: { forkSource: { sessionId: 'original-source-session', resumeAt: 'asst-prev' } },
       }),
     });
     const { tab, forkCallback, forkRequestCallback } = setupForkTest({ plugin });
@@ -2361,7 +2363,7 @@ describe('Tab - handleForkRequest', () => {
     const plugin = createMockPlugin({
       getConversationSync: jest.fn().mockReturnValue({
         title: 'Test',
-        providerSessionId: 'conv-session',
+        providerState: { providerSessionId: 'conv-session' },
         sessionId: 'old-session',
       }),
     });
@@ -2572,7 +2574,7 @@ describe('Tab - handleForkAll (via /fork command)', () => {
   it('should fall back to conversation session ID when service has none', async () => {
     const plugin = createMockPlugin({
       getConversationSync: jest.fn().mockReturnValue({
-        providerSessionId: 'conv-session-xyz',
+        providerState: { providerSessionId: 'conv-session-xyz' },
         title: 'Fallback Chat',
       }),
     });

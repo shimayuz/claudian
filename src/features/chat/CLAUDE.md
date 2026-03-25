@@ -4,9 +4,9 @@ Main sidebar chat interface. `ClaudianView` is a thin shell; logic lives in cont
 
 ## Provider Boundary Status
 
-- Current state: chat features depend on `ChatRuntime` (provider-neutral interface). `InputController` builds structured `ChatTurnRequest` objects; prompt encoding is delegated to the runtime via `prepareTurn()`. Session bookkeeping (`providerSessionId`, `forkSource`, `previousProviderSessionIds`) is handled by `ChatRuntime.buildSessionUpdates()`. Auxiliary services, history/session fallback, and task-result interpretation are created via `ProviderRegistry`. All conversations use SDK-native storage; legacy JSONL storage has been removed.
-- Remaining debt: `Conversation` type still carries Claude-specific fields (`providerSessionId`, `forkSource`).
-- Target state: chat should talk exclusively to the thin runtime facade; conversation schema should be provider-neutral.
+- Current state: chat features depend on `ChatRuntime` (provider-neutral interface). `InputController` builds structured `ChatTurnRequest` objects; prompt encoding is delegated to the runtime via `prepareTurn()`. Session bookkeeping lives in `Conversation.providerState` (opaque), managed by `ChatRuntime.buildSessionUpdates()`. Auxiliary services, history/session fallback, and task-result interpretation are created via `ProviderRegistry`. Conversations carry `providerId` for routing and `providerState` for provider-owned data; feature code never reads provider-specific fields directly. Fork state is built via `ProviderConversationHistoryService.buildForkProviderState()`.
+- Remaining debt: chat UI imports Claude model/reasoning/permission types directly from `src/providers/claude/types` (Phase B target).
+- Target state: chat should talk exclusively to the thin runtime facade; toolbar rendering should be driven by provider-owned descriptors.
 - Execution reference: [`docs/multi-provider-execution-plan.md`](../../../docs/multi-provider-execution-plan.md)
 
 ## Architecture

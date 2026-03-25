@@ -349,7 +349,7 @@ export class ConversationController {
     // New conversations always use SDK-native storage.
     if (!state.currentConversationId && state.messages.length > 0) {
       const initialSessionId = agentService?.getSessionId() ?? undefined;
-      const conversation = await plugin.createConversation(initialSessionId);
+      const conversation = await plugin.createConversation({ sessionId: initialSessionId });
       state.currentConversationId = conversation.id;
     }
 
