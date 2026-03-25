@@ -7,6 +7,7 @@ import {
   type InlineEditService,
   type InstructionRefineService,
   type ProviderCapabilities,
+  type ProviderChatUIConfig,
   type ProviderCliResolver,
   type ProviderConversationHistoryService,
   type ProviderId,
@@ -59,6 +60,10 @@ export class ProviderRegistry {
 
   static getCapabilities(providerId: ProviderId = DEFAULT_CHAT_PROVIDER_ID): ProviderCapabilities {
     return getProviderRegistration(providerId).capabilities;
+  }
+
+  static getChatUIConfig(providerId: ProviderId = DEFAULT_CHAT_PROVIDER_ID): ProviderChatUIConfig {
+    return getProviderRegistration(providerId).chatUIConfig;
   }
 
   static getRegisteredProviderIds(): ProviderId[] {

@@ -2,22 +2,12 @@ import type { Component } from 'obsidian';
 import { Notice } from 'obsidian';
 
 import type { McpServerManager } from '../../../core/mcp';
+import type { ProviderChatUIConfig } from '../../../core/providers';
 import { ProviderRegistry } from '../../../core/providers';
 import type { ChatRuntime } from '../../../core/runtime';
 import type { ChatMessage, Conversation, SlashCommand, StreamChunk } from '../../../core/types';
 import { t } from '../../../i18n';
 import type ClaudianPlugin from '../../../main';
-import {
-  type ClaudeModel,
-  DEFAULT_CLAUDE_MODELS,
-  DEFAULT_EFFORT_LEVEL,
-  DEFAULT_THINKING_BUDGET,
-  type EffortLevel,
-  getContextWindowSize,
-  isAdaptiveThinkingModel,
-  type PermissionMode,
-  type ThinkingBudget,
-} from '../../../providers/claude/types';
 import { SlashCommandDropdown } from '../../../shared/components/SlashCommandDropdown';
 import { getEnhancedPath } from '../../../utils/env';
 import { getVaultPath } from '../../../utils/path';
@@ -431,9 +421,11 @@ function initializeInstructionAndTodo(tab: TabData, plugin: ClaudianPlugin): voi
  */
 function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin): void {
   const { dom } = tab;
+  const uiConfig: ProviderChatUIConfig = ProviderRegistry.getChatUIConfig();
 
   const inputToolbar = dom.inputWrapper.createDiv({ cls: 'claudian-input-toolbar' });
   const toolbarComponents = createInputToolbar(inputToolbar, {
+    getUIConfig: () => uiConfig,
     getSettings: () => ({
       model: plugin.settings.model,
       thinkingBudget: plugin.settings.thinkingBudget,
@@ -443,18 +435,9 @@ function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin): void {
       enableSonnet1M: plugin.settings.enableSonnet1M,
     }),
     getEnvironmentVariables: () => plugin.getActiveEnvironmentVariables(),
-    onModelChange: async (model: ClaudeModel) => {
+    onModelChange: async (model: string) => {
       plugin.settings.model = model;
-      const isDefaultModel = DEFAULT_CLAUDE_MODELS.find((m) => m.value === model);
-      if (isDefaultModel) {
-        plugin.settings.thinkingBudget = DEFAULT_THINKING_BUDGET[model];
-        if (isAdaptiveThinkingModel(model)) {
-          plugin.settings.effortLevel = DEFAULT_EFFORT_LEVEL[model] ?? 'high';
-        }
-        plugin.settings.lastClaudeModel = model;
-      } else {
-        plugin.settings.lastCustomModel = model;
-      }
+      uiConfig.applyModelDefaults(model, plugin.settings);
       await plugin.saveSettings();
       tab.ui.thinkingBudgetSelector?.updateDisplay();
       tab.ui.modelSelector?.updateDisplay();
@@ -463,7 +446,7 @@ function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin): void {
       // Recalculate context usage percentage for the new model's context window
       const currentUsage = tab.state.usage;
       if (currentUsage) {
-        const newContextWindow = getContextWindowSize(model, plugin.settings.customContextLimits);
+        const newContextWindow = uiConfig.getContextWindowSize(model, plugin.settings.customContextLimits);
         const newPercentage = Math.min(100, Math.max(0, Math.round((currentUsage.contextTokens / newContextWindow) * 100)));
         tab.state.usage = {
           ...currentUsage,
@@ -473,16 +456,16 @@ function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin): void {
         };
       }
     },
-    onThinkingBudgetChange: async (budget: ThinkingBudget) => {
-      plugin.settings.thinkingBudget = budget;
+    onThinkingBudgetChange: async (budget: string) => {
+      (plugin.settings as unknown as Record<string, unknown>).thinkingBudget = budget;
       await plugin.saveSettings();
     },
-    onEffortLevelChange: async (effort: EffortLevel) => {
-      plugin.settings.effortLevel = effort;
+    onEffortLevelChange: async (effort: string) => {
+      (plugin.settings as unknown as Record<string, unknown>).effortLevel = effort;
       await plugin.saveSettings();
     },
-    onPermissionModeChange: async (mode) => {
-      plugin.settings.permissionMode = mode;
+    onPermissionModeChange: async (mode: string) => {
+      (plugin.settings as unknown as Record<string, unknown>).permissionMode = mode;
       await plugin.saveSettings();
       dom.inputWrapper.toggleClass('claudian-input-plan-mode', mode === 'plan');
     },
@@ -1182,7 +1165,7 @@ export function setupServiceCallbacks(tab: TabData, plugin: ClaudianPlugin): voi
       renderAutoTriggeredTurn(tab, chunks);
     });
     tab.service.setPermissionModeSyncCallback((sdkMode) => {
-      let mode: PermissionMode;
+      let mode: string;
       if (sdkMode === 'bypassPermissions') mode = 'yolo';
       else if (sdkMode === 'plan') mode = 'plan';
       else mode = 'normal';
@@ -1243,8 +1226,8 @@ function renderAutoTriggeredTurn(tab: TabData, chunks: StreamChunk[]): void {
   tab.renderer?.scrollToBottom();
 }
 
-export function updatePlanModeUI(tab: TabData, plugin: ClaudianPlugin, mode: PermissionMode): void {
-  plugin.settings.permissionMode = mode;
+export function updatePlanModeUI(tab: TabData, plugin: ClaudianPlugin, mode: string): void {
+  (plugin.settings as unknown as Record<string, unknown>).permissionMode = mode;
   void plugin.saveSettings();
   tab.ui.permissionToggle?.updateDisplay();
   tab.dom.inputWrapper.toggleClass('claudian-input-plan-mode', mode === 'plan');

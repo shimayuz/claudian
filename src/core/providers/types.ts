@@ -31,6 +31,7 @@ export interface CreateChatRuntimeOptions {
 
 export interface ProviderRegistration {
   capabilities: ProviderCapabilities;
+  chatUIConfig: ProviderChatUIConfig;
   createRuntime: (options: Omit<CreateChatRuntimeOptions, 'providerId'>) => ChatRuntime;
   createTitleGenerationService: (plugin: ClaudianPlugin) => TitleGenerationService;
   createInstructionRefineService: (plugin: ClaudianPlugin) => InstructionRefineService;
@@ -38,6 +39,56 @@ export interface ProviderRegistration {
   createCliResolver: () => ProviderCliResolver;
   historyService: ProviderConversationHistoryService;
   taskResultInterpreter: ProviderTaskResultInterpreter;
+}
+
+// ---------------------------------------------------------------------------
+// Provider-owned chat UI configuration
+// ---------------------------------------------------------------------------
+
+/** Option for model, reasoning, or other UI selectors. */
+export interface ProviderUIOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+/** Extended option with token count for budget-based reasoning controls. */
+export interface ProviderReasoningOption extends ProviderUIOption {
+  tokens?: number;
+}
+
+/** Static UI configuration owned by the provider (model list, reasoning, context window). */
+export interface ProviderChatUIConfig {
+  /** Model options for the selector dropdown. */
+  getModelOptions(settings: {
+    enableOpus1M?: boolean;
+    enableSonnet1M?: boolean;
+    environmentVariables?: string;
+  }): ProviderUIOption[];
+
+  /** Whether the model uses adaptive reasoning (effort levels vs token budgets). */
+  isAdaptiveReasoningModel(model: string): boolean;
+
+  /** Reasoning options for the current model (effort levels if adaptive, budgets otherwise). */
+  getReasoningOptions(model: string): ProviderReasoningOption[];
+
+  /** Default reasoning value for the model. */
+  getDefaultReasoningValue(model: string): string;
+
+  /** Context window size in tokens. */
+  getContextWindowSize(model: string, customLimits?: Record<string, number>): number;
+
+  /** Whether this is a built-in (default) model vs custom/env model. */
+  isDefaultModel(model: string): boolean;
+
+  /** Apply model change side effects to settings (defaults, tracking). */
+  applyModelDefaults(model: string, settings: unknown): void;
+
+  /** Normalize model variant based on visibility flags (e.g., 1M context toggle). */
+  normalizeModelVariant(model: string, settings: {
+    enableOpus1M?: boolean;
+    enableSonnet1M?: boolean;
+  }): string;
 }
 
 // ---------------------------------------------------------------------------

@@ -28,6 +28,23 @@ function createMockCallbacks() {
       permissionMode: 'yolo',
     }),
     getEnvironmentVariables: jest.fn().mockReturnValue(''),
+    getUIConfig: jest.fn().mockReturnValue({
+      getModelOptions: jest.fn().mockReturnValue([
+        { value: 'sonnet', label: 'Sonnet' },
+        { value: 'opus', label: 'Opus' },
+      ]),
+      isAdaptiveReasoningModel: jest.fn().mockReturnValue(true),
+      getReasoningOptions: jest.fn().mockReturnValue([
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Med' },
+        { value: 'high', label: 'High' },
+      ]),
+      getDefaultReasoningValue: jest.fn().mockReturnValue('high'),
+      getContextWindowSize: jest.fn().mockReturnValue(200000),
+      isDefaultModel: jest.fn().mockReturnValue(true),
+      applyModelDefaults: jest.fn(),
+      normalizeModelVariant: jest.fn((model: string) => model),
+    }),
   };
 }
 

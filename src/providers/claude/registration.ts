@@ -7,9 +7,11 @@ import { ClaudeConversationHistoryService } from './history';
 import { ClaudeChatRuntime } from './runtime';
 import { ClaudeCliResolver } from './runtime/ClaudeCliResolver';
 import { ClaudeTaskResultInterpreter } from './runtime/ClaudeTaskResultInterpreter';
+import { claudeChatUIConfig } from './ui/ClaudeChatUIConfig';
 
 export const claudeProviderRegistration: ProviderRegistration = {
   capabilities: CLAUDE_PROVIDER_CAPABILITIES,
+  chatUIConfig: claudeChatUIConfig,
   createRuntime: ({ plugin, mcpManager }) => new ClaudeChatRuntime(plugin, mcpManager),
   createTitleGenerationService: (plugin) => new ClaudeTitleGenerationService(plugin),
   createInstructionRefineService: (plugin) => new ClaudeInstructionRefineService(plugin),

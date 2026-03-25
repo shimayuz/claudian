@@ -27,6 +27,91 @@ function makeUsage(overrides: Partial<UsageInfo> = {}): UsageInfo {
   };
 }
 
+const DEFAULT_MODELS = [
+  { value: 'haiku', label: 'Haiku', description: 'Fast and efficient' },
+  { value: 'sonnet', label: 'Sonnet', description: 'Balanced performance' },
+  { value: 'sonnet[1m]', label: 'Sonnet 1M', description: 'Balanced performance (1M context window)' },
+  { value: 'opus', label: 'Opus', description: 'Most capable' },
+  { value: 'opus[1m]', label: 'Opus 1M', description: 'Most capable (1M context window)' },
+];
+
+const EFFORT_OPTIONS = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Med' },
+  { value: 'high', label: 'High' },
+  { value: 'max', label: 'Max' },
+];
+
+const BUDGET_OPTIONS = [
+  { value: 'off', label: 'Off', tokens: 0 },
+  { value: 'low', label: 'Low', tokens: 4000 },
+  { value: 'medium', label: 'Med', tokens: 8000 },
+  { value: 'high', label: 'High', tokens: 16000 },
+  { value: 'xhigh', label: 'Ultra', tokens: 32000 },
+];
+
+const DEFAULT_MODEL_VALUES = new Set(DEFAULT_MODELS.map(m => m.value));
+
+function filterVisibleModels(
+  models: typeof DEFAULT_MODELS,
+  enableOpus1M: boolean,
+  enableSonnet1M: boolean,
+) {
+  return models.filter((model) => {
+    if (model.value === 'opus' || model.value === 'opus[1m]') {
+      return enableOpus1M ? model.value === 'opus[1m]' : model.value === 'opus';
+    }
+    if (model.value === 'sonnet' || model.value === 'sonnet[1m]') {
+      return enableSonnet1M ? model.value === 'sonnet[1m]' : model.value === 'sonnet';
+    }
+    return true;
+  });
+}
+
+function createMockUIConfig() {
+  return {
+    getModelOptions: jest.fn().mockImplementation((settings: {
+      enableOpus1M?: boolean;
+      enableSonnet1M?: boolean;
+      environmentVariables?: string;
+    }) => {
+      // Mimic real behavior: env-based custom models bypass 1M filtering
+      if (settings.environmentVariables) {
+        const match = settings.environmentVariables.match(/ANTHROPIC_MODEL=(\S+)/);
+        if (match) {
+          const value = match[1];
+          const label = value.includes('/')
+            ? value.split('/').pop() || value
+            : value.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+          return [{ value, label }];
+        }
+      }
+      return filterVisibleModels(
+        DEFAULT_MODELS,
+        settings.enableOpus1M ?? false,
+        settings.enableSonnet1M ?? false,
+      );
+    }),
+    isAdaptiveReasoningModel: jest.fn().mockImplementation((model: string) => {
+      if (DEFAULT_MODEL_VALUES.has(model)) return true;
+      return /claude-(haiku|sonnet|opus)-/.test(model);
+    }),
+    getReasoningOptions: jest.fn().mockImplementation((model: string) => {
+      if (DEFAULT_MODEL_VALUES.has(model) || /claude-(haiku|sonnet|opus)-/.test(model)) {
+        return EFFORT_OPTIONS;
+      }
+      return BUDGET_OPTIONS;
+    }),
+    getDefaultReasoningValue: jest.fn().mockReturnValue('high'),
+    getContextWindowSize: jest.fn().mockReturnValue(200000),
+    isDefaultModel: jest.fn().mockImplementation((model: string) =>
+      DEFAULT_MODELS.some(m => m.value === model)
+    ),
+    applyModelDefaults: jest.fn(),
+    normalizeModelVariant: jest.fn((model: string) => model),
+  };
+}
+
 function createMockCallbacks(overrides: Record<string, any> = {}) {
   return {
     onModelChange: jest.fn().mockResolvedValue(undefined),
@@ -42,6 +127,7 @@ function createMockCallbacks(overrides: Record<string, any> = {}) {
       enableSonnet1M: false,
     }),
     getEnvironmentVariables: jest.fn().mockReturnValue(''),
+    getUIConfig: jest.fn().mockReturnValue(createMockUIConfig()),
     ...overrides,
   };
 }

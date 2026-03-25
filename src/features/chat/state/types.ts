@@ -9,7 +9,6 @@ import type {
   ToolCallInfo,
   UsageInfo,
 } from '../../../core/types';
-import type { PermissionMode } from '../../../providers/claude/types';
 import type { BrowserSelectionContext } from '../../../utils/browser';
 import type { CanvasSelectionContext } from '../../../utils/canvas';
 import type { EditorSelectionContext } from '../../../utils/editor';
@@ -106,7 +105,7 @@ export interface ChatStateData {
   planFilePath: string | null;
 
   // Saved permission mode before entering plan mode (for Shift+Tab toggle restore)
-  prePlanPermissionMode: PermissionMode | null;
+  prePlanPermissionMode: string | null;
 }
 
 /** Callbacks for ChatState changes. */
@@ -128,7 +127,6 @@ export type {
   ChatMessage,
   EditorSelectionContext,
   ImageAttachment,
-  PermissionMode,
   SubagentInfo,
   ThinkingBlockState,
   TodoItem,

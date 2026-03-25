@@ -3,41 +3,34 @@ import * as path from 'path';
 
 import type { McpServerManager } from '../../../core/mcp';
 import type {
+  ProviderChatUIConfig,
+  ProviderReasoningOption,
+} from '../../../core/providers';
+import type {
   ManagedMcpServer,
   UsageInfo,
 } from '../../../core/types';
-import {
-  type ClaudeModel,
-  DEFAULT_CLAUDE_MODELS,
-  EFFORT_LEVELS,
-  type EffortLevel,
-  filterVisibleModelOptions,
-  isAdaptiveThinkingModel,
-  type PermissionMode,
-  THINKING_BUDGETS,
-  type ThinkingBudget,
-} from '../../../providers/claude/types';
 import { CHECK_ICON_SVG, MCP_ICON_SVG } from '../../../shared/icons';
-import { getModelsFromEnvironment, parseEnvironmentVariables } from '../../../utils/env';
 import { filterValidPaths, findConflictingPath, isDuplicatePath, isValidDirectoryPath, validateDirectoryPath } from '../../../utils/externalContext';
 import { expandHomePath, normalizePathForFilesystem } from '../../../utils/path';
 
 export interface ToolbarSettings {
-  model: ClaudeModel;
-  thinkingBudget: ThinkingBudget;
-  effortLevel: EffortLevel;
-  permissionMode: PermissionMode;
+  model: string;
+  thinkingBudget: string;
+  effortLevel: string;
+  permissionMode: string;
   enableOpus1M: boolean;
   enableSonnet1M: boolean;
 }
 
 export interface ToolbarCallbacks {
-  onModelChange: (model: ClaudeModel) => Promise<void>;
-  onThinkingBudgetChange: (budget: ThinkingBudget) => Promise<void>;
-  onEffortLevelChange: (effort: EffortLevel) => Promise<void>;
-  onPermissionModeChange: (mode: PermissionMode) => Promise<void>;
+  onModelChange: (model: string) => Promise<void>;
+  onThinkingBudgetChange: (budget: string) => Promise<void>;
+  onEffortLevelChange: (effort: string) => Promise<void>;
+  onPermissionModeChange: (mode: string) => Promise<void>;
   getSettings: () => ToolbarSettings;
   getEnvironmentVariables?: () => string;
+  getUIConfig: () => ProviderChatUIConfig;
 }
 
 export class ModelSelector {
@@ -54,19 +47,13 @@ export class ModelSelector {
   }
 
   private getAvailableModels() {
-    const models = [...DEFAULT_CLAUDE_MODELS];
-
-    if (this.callbacks.getEnvironmentVariables) {
-      const envVarsStr = this.callbacks.getEnvironmentVariables();
-      const envVars = parseEnvironmentVariables(envVarsStr);
-      const customModels = getModelsFromEnvironment(envVars);
-      if (customModels.length > 0) {
-        return customModels;
-      }
-    }
-
     const settings = this.callbacks.getSettings();
-    return filterVisibleModelOptions(models, settings.enableOpus1M, settings.enableSonnet1M);
+    const uiConfig = this.callbacks.getUIConfig();
+    return uiConfig.getModelOptions({
+      enableOpus1M: settings.enableOpus1M,
+      enableSonnet1M: settings.enableSonnet1M,
+      environmentVariables: this.callbacks.getEnvironmentVariables?.(),
+    });
   }
 
   private render() {
@@ -164,14 +151,17 @@ export class ThinkingBudgetSelector {
     this.effortGearsEl.empty();
 
     const currentEffort = this.callbacks.getSettings().effortLevel;
-    const currentInfo = EFFORT_LEVELS.find(e => e.value === currentEffort);
+    const uiConfig = this.callbacks.getUIConfig();
+    const model = this.callbacks.getSettings().model;
+    const options = uiConfig.getReasoningOptions(model);
+    const currentInfo = options.find(e => e.value === currentEffort);
 
     const currentEl = this.effortGearsEl.createDiv({ cls: 'claudian-thinking-current' });
     currentEl.setText(currentInfo?.label || 'High');
 
     const optionsEl = this.effortGearsEl.createDiv({ cls: 'claudian-thinking-options' });
 
-    for (const effort of [...EFFORT_LEVELS].reverse()) {
+    for (const effort of [...options].reverse()) {
       const gearEl = optionsEl.createDiv({ cls: 'claudian-thinking-gear' });
       gearEl.setText(effort.label);
 
@@ -192,17 +182,21 @@ export class ThinkingBudgetSelector {
     this.budgetGearsEl.empty();
 
     const currentBudget = this.callbacks.getSettings().thinkingBudget;
-    const currentBudgetInfo = THINKING_BUDGETS.find(b => b.value === currentBudget);
+    const uiConfig = this.callbacks.getUIConfig();
+    const model = this.callbacks.getSettings().model;
+    const options: ProviderReasoningOption[] = uiConfig.getReasoningOptions(model);
+    const currentBudgetInfo = options.find(b => b.value === currentBudget);
 
     const currentEl = this.budgetGearsEl.createDiv({ cls: 'claudian-thinking-current' });
     currentEl.setText(currentBudgetInfo?.label || 'Off');
 
     const optionsEl = this.budgetGearsEl.createDiv({ cls: 'claudian-thinking-options' });
 
-    for (const budget of [...THINKING_BUDGETS].reverse()) {
+    for (const budget of [...options].reverse()) {
       const gearEl = optionsEl.createDiv({ cls: 'claudian-thinking-gear' });
       gearEl.setText(budget.label);
-      gearEl.setAttribute('title', budget.tokens > 0 ? `${budget.tokens.toLocaleString()} tokens` : 'Disabled');
+      const tokens = budget.tokens ?? 0;
+      gearEl.setAttribute('title', tokens > 0 ? `${tokens.toLocaleString()} tokens` : 'Disabled');
 
       if (budget.value === currentBudget) {
         gearEl.addClass('selected');
@@ -218,7 +212,8 @@ export class ThinkingBudgetSelector {
 
   updateDisplay() {
     const model = this.callbacks.getSettings().model;
-    const adaptive = isAdaptiveThinkingModel(model);
+    const uiConfig = this.callbacks.getUIConfig();
+    const adaptive = uiConfig.isAdaptiveReasoningModel(model);
 
     if (this.effortEl) {
       this.effortEl.style.display = adaptive ? '' : 'none';
@@ -282,7 +277,7 @@ export class PermissionToggle {
 
   private async toggle() {
     const current = this.callbacks.getSettings().permissionMode;
-    const newMode: PermissionMode = current === 'yolo' ? 'normal' : 'yolo';
+    const newMode = current === 'yolo' ? 'normal' : 'yolo';
     await this.callbacks.onPermissionModeChange(newMode);
     this.updateDisplay();
   }

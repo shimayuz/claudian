@@ -1,9 +1,9 @@
 import type { EventRef, WorkspaceLeaf } from 'obsidian';
 import { ItemView, Notice, Scope, setIcon } from 'obsidian';
 
+import { ProviderRegistry } from '../../core/providers';
 import { VIEW_TYPE_CLAUDIAN } from '../../core/types';
 import type ClaudianPlugin from '../../main';
-import { getContextWindowSize } from '../../providers/claude/types';
 import { LOGO_SVG } from './constants';
 import { TabBar, TabManager, updatePlanModeUI } from './tabs';
 import type { TabData, TabId } from './tabs/types';
@@ -81,7 +81,8 @@ export class ClaudianView extends ItemView {
   /** Refreshes model-dependent UI across all tabs (used after settings/env changes). */
   refreshModelSelector(): void {
     const model = this.plugin.settings.model;
-    const contextWindow = getContextWindowSize(model, this.plugin.settings.customContextLimits);
+    const uiConfig = ProviderRegistry.getChatUIConfig();
+    const contextWindow = uiConfig.getContextWindowSize(model, this.plugin.settings.customContextLimits);
 
     for (const tab of this.tabManager?.getAllTabs() ?? []) {
       if (tab.state.usage) {
