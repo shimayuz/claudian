@@ -422,10 +422,12 @@ function initializeInstructionAndTodo(tab: TabData, plugin: ClaudianPlugin): voi
 function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin): void {
   const { dom } = tab;
   const uiConfig: ProviderChatUIConfig = ProviderRegistry.getChatUIConfig();
+  const capabilities = ProviderRegistry.getCapabilities();
 
   const inputToolbar = dom.inputWrapper.createDiv({ cls: 'claudian-input-toolbar' });
   const toolbarComponents = createInputToolbar(inputToolbar, {
     getUIConfig: () => uiConfig,
+    getCapabilities: () => capabilities,
     getSettings: () => ({
       model: plugin.settings.model,
       thinkingBudget: plugin.settings.thinkingBudget,

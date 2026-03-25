@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import type { McpServerManager } from '../../../core/mcp';
 import type {
+  ProviderCapabilities,
   ProviderChatUIConfig,
   ProviderReasoningOption,
 } from '../../../core/providers';
@@ -31,6 +32,7 @@ export interface ToolbarCallbacks {
   getSettings: () => ToolbarSettings;
   getEnvironmentVariables?: () => string;
   getUIConfig: () => ProviderChatUIConfig;
+  getCapabilities: () => ProviderCapabilities;
 }
 
 export class ModelSelector {
@@ -211,6 +213,13 @@ export class ThinkingBudgetSelector {
   }
 
   updateDisplay() {
+    const capabilities = this.callbacks.getCapabilities();
+    if (capabilities.reasoningControl === 'none') {
+      if (this.effortEl) this.effortEl.style.display = 'none';
+      if (this.budgetEl) this.budgetEl.style.display = 'none';
+      return;
+    }
+
     const model = this.callbacks.getSettings().model;
     const uiConfig = this.callbacks.getUIConfig();
     const adaptive = uiConfig.isAdaptiveReasoningModel(model);

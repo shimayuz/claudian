@@ -486,6 +486,7 @@ export class ClaudianView extends ItemView {
     this.registerDomEvent(this.containerEl, 'keydown', (e: KeyboardEvent) => {
       if (e.key === 'Tab' && e.shiftKey && !e.isComposing) {
         e.preventDefault();
+        if (!ProviderRegistry.getCapabilities().supportsPlanMode) return;
         const activeTab = this.tabManager?.getActiveTab();
         if (!activeTab) return;
         const current = this.plugin.settings.permissionMode;

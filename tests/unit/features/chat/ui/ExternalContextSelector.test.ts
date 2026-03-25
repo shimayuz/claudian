@@ -45,6 +45,16 @@ function createMockCallbacks() {
       applyModelDefaults: jest.fn(),
       normalizeModelVariant: jest.fn((model: string) => model),
     }),
+    getCapabilities: jest.fn().mockReturnValue({
+      providerId: 'claude',
+      supportsPersistentRuntime: true,
+      supportsNativeHistory: true,
+      supportsPlanMode: true,
+      supportsRewind: true,
+      supportsFork: true,
+      supportsProviderCommands: true,
+      reasoningControl: 'effort',
+    }),
   };
 }
 

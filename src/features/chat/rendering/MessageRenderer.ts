@@ -1,6 +1,7 @@
 import type { App, Component } from 'obsidian';
 import { MarkdownRenderer, Notice } from 'obsidian';
 
+import { ProviderRegistry } from '../../../core/providers';
 import { isSubagentToolName, isWriteEditTool, TOOL_AGENT_OUTPUT } from '../../../core/tools/toolNames';
 import type { ChatMessage, ImageAttachment, SubagentInfo, ToolCallInfo } from '../../../core/types';
 import { t } from '../../../i18n';
@@ -633,6 +634,7 @@ export class MessageRenderer {
   }
 
   private addRewindButton(msgEl: HTMLElement, messageId: string): void {
+    if (!ProviderRegistry.getCapabilities().supportsRewind) return;
     const toolbar = this.getOrCreateActionsToolbar(msgEl);
     const btn = toolbar.createSpan({ cls: 'claudian-message-rewind-btn' });
     if (toolbar.firstChild !== btn) toolbar.insertBefore(btn, toolbar.firstChild);
@@ -649,6 +651,7 @@ export class MessageRenderer {
   }
 
   private addForkButton(msgEl: HTMLElement, messageId: string): void {
+    if (!ProviderRegistry.getCapabilities().supportsFork) return;
     const toolbar = this.getOrCreateActionsToolbar(msgEl);
     const btn = toolbar.createSpan({ cls: 'claudian-message-fork-btn' });
     if (toolbar.firstChild !== btn) toolbar.insertBefore(btn, toolbar.firstChild);

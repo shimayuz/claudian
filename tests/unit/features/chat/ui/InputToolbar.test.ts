@@ -128,6 +128,16 @@ function createMockCallbacks(overrides: Record<string, any> = {}) {
     }),
     getEnvironmentVariables: jest.fn().mockReturnValue(''),
     getUIConfig: jest.fn().mockReturnValue(createMockUIConfig()),
+    getCapabilities: jest.fn().mockReturnValue({
+      providerId: 'claude',
+      supportsPersistentRuntime: true,
+      supportsNativeHistory: true,
+      supportsPlanMode: true,
+      supportsRewind: true,
+      supportsFork: true,
+      supportsProviderCommands: true,
+      reasoningControl: 'effort',
+    }),
     ...overrides,
   };
 }

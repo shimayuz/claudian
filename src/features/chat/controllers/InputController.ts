@@ -1,7 +1,7 @@
 import { Notice } from 'obsidian';
 
 import { detectBuiltInCommand } from '../../../core/commands';
-import type { InstructionRefineService, TitleGenerationService } from '../../../core/providers';
+import { type InstructionRefineService, ProviderRegistry, type TitleGenerationService } from '../../../core/providers';
 import type { ApprovalCallbackOptions, ChatRuntime, ChatTurnRequest } from '../../../core/runtime';
 import { TOOL_EXIT_PLAN_MODE } from '../../../core/tools/toolNames';
 import type { ApprovalDecision, ChatMessage, ExitPlanModeDecision } from '../../../core/types';
@@ -941,6 +941,10 @@ export class InputController {
         this.showResumeDropdown();
         break;
       case 'fork': {
+        if (!ProviderRegistry.getCapabilities().supportsFork) {
+          new Notice('Fork is not supported by this provider.');
+          return;
+        }
         if (!this.deps.onForkAll) {
           new Notice('Fork not available.');
           return;
