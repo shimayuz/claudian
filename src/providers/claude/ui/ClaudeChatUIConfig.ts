@@ -4,11 +4,11 @@ import type {
   ProviderReasoningOption,
   ProviderUIOption,
 } from '../../../core/providers/types';
+import type { ClaudianSettings } from '../../../core/types/settings';
 import { parseEnvironmentVariables } from '../../../utils/env';
 import { getCustomModelIds, getModelsFromEnvironment } from '../env/claudeModelEnv';
 import {
   type ClaudeModel,
-  type ClaudianSettings,
   DEFAULT_CLAUDE_MODELS,
   DEFAULT_EFFORT_LEVEL,
   DEFAULT_THINKING_BUDGET,

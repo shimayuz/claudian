@@ -17,12 +17,11 @@ import type {
 
 import type { McpServerManager } from '../../../core/mcp';
 import type { AppPluginManager } from '../../../core/providers';
+import type { ClaudianSettings, PermissionMode } from '../../../core/types/settings';
 import { buildSystemPrompt, type SystemPromptSettings } from '../prompt';
 import {
-  type ClaudianSettings,
   type EffortLevel,
   isAdaptiveThinkingModel,
-  type PermissionMode,
   THINKING_BUDGETS,
 } from '../types';
 import { createCustomSpawnFunction } from './customSpawn';

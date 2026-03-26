@@ -58,6 +58,7 @@ import type {
   StreamChunk,
   ToolCallInfo,
 } from '../../../core/types';
+import type { PermissionMode } from '../../../core/types/settings';
 import type ClaudianPlugin from '../../../main';
 import { stripCurrentNoteContext } from '../../../utils/context';
 import { getEnhancedPath, getMissingNodeError, parseEnvironmentVariables } from '../../../utils/env';
@@ -84,7 +85,6 @@ import {
   type ClaudeProviderState,
   getClaudeState,
   isAdaptiveThinkingModel,
-  type PermissionMode,
   THINKING_BUDGETS,
 } from '../types';
 import { MessageChannel } from './ClaudeMessageChannel';

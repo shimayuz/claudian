@@ -13,7 +13,8 @@ import {
   getDefaultBlockedCommands,
   VIEW_TYPE_CLAUDIAN
 } from '@/core/types';
-import type { ClaudianSettings, LegacyPermission } from '@/providers/claude/types';
+import type { ClaudianSettings } from '@/core/types/settings';
+import type { LegacyPermission } from '@/providers/claude/types';
 import {
   CONTEXT_WINDOW_1M,
   CONTEXT_WINDOW_STANDARD,

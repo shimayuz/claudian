@@ -18,7 +18,8 @@
 import type { VaultFileAdapter } from '../../../core/storage/VaultFileAdapter';
 import type { PlatformBlockedCommands } from '../../../core/types';
 import { getDefaultBlockedCommands } from '../../../core/types';
-import type { ClaudeModel, ClaudianSettings } from '../types';
+import type { ClaudianSettings } from '../../../core/types/settings';
+import type { ClaudeModel } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
 
 /** Path to Claudian settings file relative to vault root. */

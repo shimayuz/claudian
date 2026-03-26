@@ -5,9 +5,6 @@ import {
   getDefaultBlockedCommands,
 } from '../../../core/types/settings';
 
-// Re-export core settings types used by the Claude provider
-export type { ClaudianSettings, HostnameCliPaths, PermissionMode } from '../../../core/types/settings';
-
 /**
  * Platform-specific Claude CLI paths.
  * @deprecated Use HostnameCliPaths instead. Kept for migration from older versions.
