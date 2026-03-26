@@ -1,5 +1,3 @@
-export type { PluginInfo as ClaudianPlugin, PluginScope } from '../../../core/types';
-
 export interface InstalledPluginEntry {
   scope: 'user' | 'project';
   installPath: string;

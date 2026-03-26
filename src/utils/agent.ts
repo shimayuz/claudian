@@ -1,4 +1,4 @@
-import type { AgentDefinition } from '../providers/claude/types';
+import type { AgentDefinition } from '../core/types';
 import { validateSlugName } from './frontmatter';
 import { yamlString } from './slashCommand';
 

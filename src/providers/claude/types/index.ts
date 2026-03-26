@@ -1,7 +1,5 @@
 export {
   AGENT_PERMISSION_MODES,
-  type AgentDefinition,
-  type AgentFrontmatter,
   type AgentPermissionMode,
 } from './agent';
 export {
@@ -21,10 +19,8 @@ export {
   type ThinkingBudget,
 } from './models';
 export {
-  type ClaudianPlugin,
   type InstalledPluginEntry,
   type InstalledPluginsFile,
-  type PluginScope,
 } from './plugins';
 export {
   type ClaudeProviderState,

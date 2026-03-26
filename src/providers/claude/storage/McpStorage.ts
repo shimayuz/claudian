@@ -17,7 +17,6 @@
  * }
  */
 
-import { parseClipboardConfig, tryParseClipboardConfig } from '../../../core/mcp/McpConfigParser';
 import type { VaultFileAdapter } from '../../../core/storage/VaultFileAdapter';
 import type {
   ManagedMcpConfigFile,
@@ -156,7 +155,4 @@ export class McpStorage {
   async exists(): Promise<boolean> {
     return this.adapter.exists(MCP_CONFIG_PATH);
   }
-
-  static parseClipboardConfig = parseClipboardConfig;
-  static tryParseClipboardConfig = tryParseClipboardConfig;
 }

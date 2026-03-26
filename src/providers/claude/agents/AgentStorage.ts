@@ -1,5 +1,6 @@
+import type { AgentDefinition, AgentFrontmatter } from '../../../core/types';
 import { extractStringArray, isRecord, normalizeStringArray, parseFrontmatter } from '../../../utils/frontmatter';
-import { AGENT_PERMISSION_MODES, type AgentDefinition, type AgentFrontmatter, type AgentPermissionMode } from '../types';
+import { AGENT_PERMISSION_MODES, type AgentPermissionMode } from '../types';
 
 const KNOWN_AGENT_KEYS = new Set([
   'name', 'description', 'tools', 'disallowedTools', 'model',

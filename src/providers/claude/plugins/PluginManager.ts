@@ -11,8 +11,9 @@ import { Notice } from 'obsidian';
 import * as os from 'os';
 import * as path from 'path';
 
+import type { PluginInfo, PluginScope } from '../../../core/types';
 import type { CCSettingsStorage } from '../storage/CCSettingsStorage';
-import type { ClaudianPlugin, InstalledPluginEntry, InstalledPluginsFile, PluginScope } from '../types';
+import type { InstalledPluginEntry, InstalledPluginsFile } from '../types';
 
 const INSTALLED_PLUGINS_PATH = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
 const GLOBAL_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
@@ -72,7 +73,7 @@ function extractPluginName(pluginId: string): string {
 export class PluginManager {
   private ccSettingsStorage: CCSettingsStorage;
   private vaultPath: string;
-  private plugins: ClaudianPlugin[] = [];
+  private plugins: PluginInfo[] = [];
 
   constructor(vaultPath: string, ccSettingsStorage: CCSettingsStorage) {
     this.vaultPath = vaultPath;
@@ -87,7 +88,7 @@ export class PluginManager {
     const globalEnabled = globalSettings?.enabledPlugins ?? {};
     const projectEnabled = projectSettings?.enabledPlugins ?? {};
 
-    const plugins: ClaudianPlugin[] = [];
+    const plugins: PluginInfo[] = [];
     const normalizedVaultPath = normalizePathForComparison(this.vaultPath);
 
     if (installedPlugins?.plugins) {
@@ -129,7 +130,7 @@ export class PluginManager {
     return readJsonFile(projectSettingsPath);
   }
 
-  getPlugins(): ClaudianPlugin[] {
+  getPlugins(): PluginInfo[] {
     return [...this.plugins];
   }
 

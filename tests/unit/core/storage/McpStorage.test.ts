@@ -1,3 +1,4 @@
+import { parseClipboardConfig, tryParseClipboardConfig } from '@/core/mcp';
 import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
 import { McpStorage } from '@/providers/claude/storage';
 
@@ -487,7 +488,7 @@ describe('McpStorage', () => {
         },
       });
 
-      const result = McpStorage.parseClipboardConfig(json);
+      const result = parseClipboardConfig(json);
       expect(result.needsName).toBe(false);
       expect(result.servers).toHaveLength(1);
       expect(result.servers[0].name).toBe('my-server');
@@ -502,7 +503,7 @@ describe('McpStorage', () => {
         },
       });
 
-      const result = McpStorage.parseClipboardConfig(json);
+      const result = parseClipboardConfig(json);
       expect(result.servers).toHaveLength(2);
       expect(result.needsName).toBe(false);
     });
@@ -510,7 +511,7 @@ describe('McpStorage', () => {
     it('parses single server config without name (command-based)', () => {
       const json = JSON.stringify({ command: 'node', args: ['server.js'] });
 
-      const result = McpStorage.parseClipboardConfig(json);
+      const result = parseClipboardConfig(json);
       expect(result.needsName).toBe(true);
       expect(result.servers).toHaveLength(1);
       expect(result.servers[0].name).toBe('');
@@ -520,7 +521,7 @@ describe('McpStorage', () => {
     it('parses single server config without name (url-based)', () => {
       const json = JSON.stringify({ type: 'sse', url: 'http://example.com' });
 
-      const result = McpStorage.parseClipboardConfig(json);
+      const result = parseClipboardConfig(json);
       expect(result.needsName).toBe(true);
       expect(result.servers[0].config).toEqual({ type: 'sse', url: 'http://example.com' });
     });
@@ -530,7 +531,7 @@ describe('McpStorage', () => {
         'my-server': { command: 'node', args: ['server.js'] },
       });
 
-      const result = McpStorage.parseClipboardConfig(json);
+      const result = parseClipboardConfig(json);
       expect(result.needsName).toBe(false);
       expect(result.servers).toHaveLength(1);
       expect(result.servers[0].name).toBe('my-server');
@@ -542,18 +543,18 @@ describe('McpStorage', () => {
         server2: { command: 'cmd2' },
       });
 
-      const result = McpStorage.parseClipboardConfig(json);
+      const result = parseClipboardConfig(json);
       expect(result.needsName).toBe(false);
       expect(result.servers).toHaveLength(2);
     });
 
     it('throws for invalid JSON', () => {
-      expect(() => McpStorage.parseClipboardConfig('not json'))
+      expect(() => parseClipboardConfig('not json'))
         .toThrow('Invalid JSON');
     });
 
     it('throws for non-object JSON', () => {
-      expect(() => McpStorage.parseClipboardConfig('"string"'))
+      expect(() => parseClipboardConfig('"string"'))
         .toThrow('Invalid JSON object');
     });
 
@@ -564,14 +565,14 @@ describe('McpStorage', () => {
         },
       });
 
-      expect(() => McpStorage.parseClipboardConfig(json))
+      expect(() => parseClipboardConfig(json))
         .toThrow('No valid server configs found');
     });
 
     it('throws for unrecognized format', () => {
       const json = JSON.stringify({ someRandomField: 123 });
 
-      expect(() => McpStorage.parseClipboardConfig(json))
+      expect(() => parseClipboardConfig(json))
         .toThrow('Invalid MCP configuration format');
     });
 
@@ -583,7 +584,7 @@ describe('McpStorage', () => {
         },
       });
 
-      const result = McpStorage.parseClipboardConfig(json);
+      const result = parseClipboardConfig(json);
       expect(result.servers).toHaveLength(1);
       expect(result.servers[0].name).toBe('valid');
     });
@@ -592,26 +593,26 @@ describe('McpStorage', () => {
   describe('tryParseClipboardConfig', () => {
     it('returns parsed config for valid JSON', () => {
       const text = JSON.stringify({ command: 'node', args: ['server.js'] });
-      const result = McpStorage.tryParseClipboardConfig(text);
+      const result = tryParseClipboardConfig(text);
       expect(result).not.toBeNull();
       expect(result!.needsName).toBe(true);
     });
 
     it('returns null for non-JSON text', () => {
-      expect(McpStorage.tryParseClipboardConfig('hello world')).toBeNull();
+      expect(tryParseClipboardConfig('hello world')).toBeNull();
     });
 
     it('returns null for text not starting with {', () => {
-      expect(McpStorage.tryParseClipboardConfig('[1, 2, 3]')).toBeNull();
+      expect(tryParseClipboardConfig('[1, 2, 3]')).toBeNull();
     });
 
     it('returns null for invalid MCP config that is valid JSON', () => {
-      expect(McpStorage.tryParseClipboardConfig('{ "random": 42 }')).toBeNull();
+      expect(tryParseClipboardConfig('{ "random": 42 }')).toBeNull();
     });
 
     it('trims whitespace before checking', () => {
       const text = '  \n  ' + JSON.stringify({ command: 'node' }) + '  \n';
-      const result = McpStorage.tryParseClipboardConfig(text);
+      const result = tryParseClipboardConfig(text);
       expect(result).not.toBeNull();
     });
   });

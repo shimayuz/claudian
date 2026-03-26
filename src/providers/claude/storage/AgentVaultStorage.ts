@@ -1,7 +1,7 @@
 import type { VaultFileAdapter } from '../../../core/storage/VaultFileAdapter';
+import type { AgentDefinition } from '../../../core/types';
 import { serializeAgent } from '../../../utils/agent';
 import { buildAgentFromFrontmatter, parseAgentFile } from '../agents/AgentStorage';
-import type { AgentDefinition } from '../types/agent';
 
 export const AGENTS_PATH = '.claude/agents';
 
