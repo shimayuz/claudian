@@ -53,6 +53,18 @@ export {
   type ToolDiffData,
 } from './tools';
 
+// Agent types
+export {
+  type AgentDefinition,
+  type AgentFrontmatter,
+} from './agent';
+
+// Plugin types
+export {
+  type PluginInfo,
+  type PluginScope,
+} from './plugins';
+
 // MCP types
 export {
   DEFAULT_MCP_SERVER,

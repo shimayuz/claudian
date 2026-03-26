@@ -55,6 +55,6 @@ export interface ChatRuntime {
 
   resolveSessionIdForFork(conversation: Conversation | null): string | null;
 
-  loadSubagentToolCalls(agentId: string): Promise<ToolCallInfo[]>;
-  loadSubagentFinalResult(agentId: string): Promise<string | null>;
+  loadSubagentToolCalls?(agentId: string): Promise<ToolCallInfo[]>;
+  loadSubagentFinalResult?(agentId: string): Promise<string | null>;
 }

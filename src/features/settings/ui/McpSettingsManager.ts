@@ -1,10 +1,10 @@
 import { Notice, setIcon } from 'obsidian';
 
+import { tryParseClipboardConfig } from '../../../core/mcp';
 import { testMcpServer } from '../../../core/mcp/McpTester';
 import type { ManagedMcpServer, McpServerConfig, McpServerType } from '../../../core/types';
 import { DEFAULT_MCP_SERVER, getMcpServerType } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
-import { McpStorage } from '../../../providers/claude/storage';
 import { McpServerModal } from './McpServerModal';
 import { McpTestModal } from './McpTestModal';
 
@@ -264,7 +264,7 @@ export class McpSettingsManager {
         return;
       }
 
-      const parsed = McpStorage.tryParseClipboardConfig(text);
+      const parsed = tryParseClipboardConfig(text);
       if (!parsed || parsed.servers.length === 0) {
         new Notice('No valid MCP configuration found in clipboard');
         return;

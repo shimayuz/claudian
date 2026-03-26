@@ -741,9 +741,9 @@ export class StreamController {
     let finalResultHydrated = false;
 
     if (hydrateToolCalls && !subagent.toolCalls?.length) {
-      const recoveredToolCalls = await runtime.loadSubagentToolCalls(
+      const recoveredToolCalls = await runtime.loadSubagentToolCalls?.(
         subagent.agentId || ''
-      );
+      ) ?? [];
       if (recoveredToolCalls.length > 0) {
         subagent.toolCalls = recoveredToolCalls.map((toolCall) => ({
           ...toolCall,
@@ -753,9 +753,9 @@ export class StreamController {
       }
     }
 
-    const recoveredFinalResult = await runtime.loadSubagentFinalResult(
+    const recoveredFinalResult = await runtime.loadSubagentFinalResult?.(
       subagent.agentId || ''
-    );
+    ) ?? null;
     if (recoveredFinalResult && recoveredFinalResult.trim().length > 0) {
       finalResultHydrated = true;
       if (recoveredFinalResult !== subagent.result) {

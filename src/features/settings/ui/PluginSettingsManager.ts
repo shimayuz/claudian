@@ -1,7 +1,7 @@
 import { Notice, setIcon } from 'obsidian';
 
+import type { PluginInfo } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
-import type { ClaudianPlugin as ClaudianPluginType } from '../../../providers/claude/types';
 
 export class PluginSettingsManager {
   private containerEl: HTMLElement;
@@ -58,7 +58,7 @@ export class PluginSettingsManager {
     }
   }
 
-  private renderPluginItem(listEl: HTMLElement, plugin: ClaudianPluginType) {
+  private renderPluginItem(listEl: HTMLElement, plugin: PluginInfo) {
     const itemEl = listEl.createDiv({ cls: 'claudian-plugin-item' });
     if (!plugin.enabled) {
       itemEl.addClass('claudian-plugin-item-disabled');
