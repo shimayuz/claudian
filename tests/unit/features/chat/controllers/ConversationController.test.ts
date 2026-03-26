@@ -2116,6 +2116,7 @@ describe('ConversationController - Rewind', () => {
       setSessionId: jest.fn(),
       consumeSessionInvalidation: jest.fn().mockReturnValue(false),
       rewind: jest.fn().mockResolvedValue({ canRewind: true, filesChanged: ['a.ts'] }),
+      getCapabilities: jest.fn().mockReturnValue({ supportsRewind: true }),
       buildSessionUpdates: null as any,
     };
     mockAgentService.buildSessionUpdates = createMockBuildSessionUpdates(mockAgentService);

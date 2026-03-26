@@ -293,6 +293,7 @@ class InlineEditController {
       : null;
     const providerId = conversation?.providerId
       ?? activeTab?.service?.providerId
+      ?? activeTab?.providerId
       ?? DEFAULT_CHAT_PROVIDER_ID;
     this.inlineEditService = ProviderRegistry.createInlineEditService(plugin, providerId);
     this.mentionDataProvider = new VaultMentionDataProvider(this.app, {

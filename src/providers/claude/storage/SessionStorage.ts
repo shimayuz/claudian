@@ -139,14 +139,15 @@ export class SessionStorage {
   }
 
   toSessionMetadata(conversation: Conversation): SessionMetadata {
-    const subagentData = this.extractSubagentData(conversation.messages);
-
-    // Merge extracted subagentData into providerState for persistence
+    // Only extract Claude-specific subagentData for Claude conversations
     const providerState: Record<string, unknown> = { ...conversation.providerState };
-    if (Object.keys(subagentData).length > 0) {
-      providerState.subagentData = subagentData;
-    } else {
-      delete providerState.subagentData;
+    if (conversation.providerId === DEFAULT_CHAT_PROVIDER_ID) {
+      const subagentData = this.extractSubagentData(conversation.messages);
+      if (Object.keys(subagentData).length > 0) {
+        providerState.subagentData = subagentData;
+      } else {
+        delete providerState.subagentData;
+      }
     }
 
     return {

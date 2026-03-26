@@ -724,6 +724,11 @@ async function handleForkRequest(
 ): Promise<void> {
   const { state } = tab;
 
+  if (!getTabCapabilities(tab, plugin).supportsFork) {
+    new Notice('Fork is not supported by this provider.');
+    return;
+  }
+
   if (state.isStreaming) {
     new Notice(t('chat.fork.unavailableStreaming'));
     return;
@@ -767,6 +772,11 @@ async function handleForkAll(
   forkRequestCallback: (forkContext: ForkContext) => Promise<void>,
 ): Promise<void> {
   const { state } = tab;
+
+  if (!getTabCapabilities(tab, plugin).supportsFork) {
+    new Notice('Fork is not supported by this provider.');
+    return;
+  }
 
   if (state.isStreaming) {
     new Notice(t('chat.fork.unavailableStreaming'));

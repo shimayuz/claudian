@@ -249,6 +249,12 @@ export class ConversationController {
   async rewind(userMessageId: string): Promise<void> {
     const { plugin, state, renderer } = this.deps;
 
+    const agentServiceForCheck = this.getAgentService();
+    if (agentServiceForCheck && !agentServiceForCheck.getCapabilities().supportsRewind) {
+      new Notice(t('chat.rewind.failed', { error: 'Rewind is not supported by this provider.' }));
+      return;
+    }
+
     if (state.isStreaming) {
       new Notice(t('chat.rewind.unavailableStreaming'));
       return;

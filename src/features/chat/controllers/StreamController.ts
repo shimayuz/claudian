@@ -187,6 +187,8 @@ export class StreamController {
         break;
       }
 
+      default:
+        break;
     }
 
     this.scrollToBottom();
@@ -613,6 +615,9 @@ export class StreamController {
 
       case 'text':
       case 'thinking':
+        break;
+
+      default:
         break;
     }
   }
