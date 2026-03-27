@@ -1,8 +1,14 @@
 import {
   TOOL_AGENT_OUTPUT,
+  TOOL_APPLY_PATCH,
   TOOL_ASK_USER_QUESTION,
   TOOL_BASH,
   TOOL_BASH_OUTPUT,
+  TOOL_CODEX_CLOSE_AGENT,
+  TOOL_CODEX_RESUME_AGENT,
+  TOOL_CODEX_SEND_INPUT,
+  TOOL_CODEX_SPAWN_AGENT,
+  TOOL_CODEX_WAIT,
   TOOL_EDIT,
   TOOL_ENTER_PLAN_MODE,
   TOOL_EXIT_PLAN_MODE,
@@ -23,6 +29,7 @@ import {
   TOOL_WEB_FETCH,
   TOOL_WEB_SEARCH,
   TOOL_WRITE,
+  TOOL_WRITE_STDIN,
 } from './toolNames';
 
 const TOOL_ICONS: Record<string, string> = {
@@ -50,6 +57,14 @@ const TOOL_ICONS: Record<string, string> = {
   [TOOL_TOOL_SEARCH]: 'search-check',
   [TOOL_ENTER_PLAN_MODE]: 'map',
   [TOOL_EXIT_PLAN_MODE]: 'check-circle',
+  // Codex-native tools
+  [TOOL_APPLY_PATCH]: 'file-pen',
+  [TOOL_WRITE_STDIN]: 'terminal',
+  [TOOL_CODEX_SPAWN_AGENT]: 'bot',
+  [TOOL_CODEX_SEND_INPUT]: 'bot',
+  [TOOL_CODEX_WAIT]: 'clock',
+  [TOOL_CODEX_RESUME_AGENT]: 'bot',
+  [TOOL_CODEX_CLOSE_AGENT]: 'bot',
 };
 
 /** Special marker for MCP tools - signals to use custom SVG. */

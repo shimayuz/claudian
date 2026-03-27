@@ -1690,7 +1690,7 @@ export class ClaudianService implements ChatRuntime {
     const currentId = this.sessionManager.getSessionId();
     const sessionChanged = currentId !== id;
 
-    // Close synchronously when session changes (maintains backwards compatibility)
+    // Close synchronously when session changes
     if (sessionChanged) {
       this.closePersistentQuery('session switch');
       this.crashRecoveryAttempted = false;
@@ -1698,14 +1698,13 @@ export class ClaudianService implements ChatRuntime {
 
     this.sessionManager.setSessionId(id, this.getScopedSettings().model);
 
-    // Ensure query is ready with the new session ID and external contexts
-    // Passing external contexts here prevents stale contexts from previous session
-    this.ensureReady({
-      sessionId: id ?? undefined,
-      externalContextPaths,
-    }).catch(() => {
-      // Best-effort, ignore failures
-    });
+    // Track external context paths for when the runtime starts on demand
+    if (externalContextPaths !== undefined) {
+      this.currentExternalContextPaths = externalContextPaths;
+    }
+
+    // Passive: do NOT call ensureReady() here.
+    // Runtime starts on demand when query() is called.
   }
 
   /**

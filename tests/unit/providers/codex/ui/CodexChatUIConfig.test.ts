@@ -35,8 +35,8 @@ describe('CodexChatUIConfig', () => {
   describe('getReasoningOptions', () => {
     it('should return effort levels', () => {
       const options = codexChatUIConfig.getReasoningOptions('gpt-5.4');
-      expect(options).toHaveLength(3);
-      expect(options.map(o => o.value)).toEqual(['low', 'medium', 'high']);
+      expect(options).toHaveLength(4);
+      expect(options.map(o => o.value)).toEqual(['low', 'medium', 'high', 'xhigh']);
     });
   });
 
@@ -87,8 +87,16 @@ describe('CodexChatUIConfig', () => {
   });
 
   describe('getPermissionModeToggle', () => {
-    it('should return null', () => {
-      expect(codexChatUIConfig.getPermissionModeToggle!()).toBeNull();
+    it('should return yolo/safe toggle config without plan mode', () => {
+      const toggle = codexChatUIConfig.getPermissionModeToggle!();
+      expect(toggle).toEqual({
+        inactiveValue: 'normal',
+        inactiveLabel: 'Safe',
+        activeValue: 'yolo',
+        activeLabel: 'YOLO',
+      });
+      expect(toggle).not.toHaveProperty('planValue');
+      expect(toggle).not.toHaveProperty('planLabel');
     });
   });
 });

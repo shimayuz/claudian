@@ -15,9 +15,7 @@ import {
   type ForkContext,
   getTabTitle,
   initializeTabControllers,
-  initializeTabService,
   initializeTabUI,
-  setupServiceCallbacks,
   wireTabInputEvents,
 } from './Tab';
 import {
@@ -173,15 +171,11 @@ export class TabManager implements TabManagerInterface {
       this.activeTabId = tabId;
       activateTab(tab);
 
-      // Service initialization is now truly lazy - happens on first query via
-      // ensureServiceInitialized() in InputController.sendMessage()
-
       // Load conversation if not already loaded
       if (tab.conversationId && tab.state.messages.length === 0) {
         await tab.controllers.conversationController?.switchTo(tab.conversationId);
       } else if (tab.conversationId && tab.state.messages.length > 0 && tab.service) {
-        // Tab already has messages loaded - sync service session to conversation
-        // This handles the case where user switches between tabs with different sessions
+        // Tab already has messages loaded and runtime exists — passive sync only
         const conversation = this.plugin.getConversationSync(tab.conversationId);
         if (conversation) {
           const hasMessages = conversation.messages.length > 0;
@@ -220,8 +214,7 @@ export class TabManager implements TabManagerInterface {
     }
 
     // If this is the last tab and it's already empty (no conversation),
-    // don't close it - it's already a fresh session with a warm service.
-    // Closing and recreating would waste the pre-warmed connection.
+    // don't close it - it's already a blank draft container.
     if (this.tabs.size === 1 && !tab.conversationId && tab.state.messages.length === 0) {
       return false;
     }
@@ -250,18 +243,11 @@ export class TabManager implements TabManagerInterface {
 
         if (fallbackTabId && this.tabs.has(fallbackTabId)) {
           await this.switchToTab(fallbackTabId);
-
-          // If this is now the only tab and it's not warm, pre-warm immediately
-          // User expects the active tab to be ready for chat
-          if (this.tabs.size === 1) {
-            await this.initializeActiveTabService();
-          }
+          // No pre-warm: replacement tabs stay cold until send
         }
       } else {
-        // Create a new empty tab and pre-warm immediately
-        // This is the only tab, so it should be ready for chat
+        // Create a replacement blank tab (stays cold)
         await this.createTab();
-        await this.initializeActiveTabService();
       }
     }
 
@@ -526,28 +512,7 @@ export class TabManager implements TabManagerInterface {
       await this.createTab();
     }
 
-    // Pre-initialize the active tab's service so it's ready immediately
-    // Other tabs stay lazy until first query
-    await this.initializeActiveTabService();
-  }
-
-  /**
-   * Initializes the active tab's service if not already done.
-   * Called after restore to ensure the visible tab is ready immediately.
-   */
-  private async initializeActiveTabService(): Promise<void> {
-    const activeTab = this.getActiveTab();
-    if (!activeTab || activeTab.serviceInitialized) {
-      return;
-    }
-
-    try {
-      // initializeTabService() handles session ID resolution from tab.conversationId
-      await initializeTabService(activeTab, this.plugin, this.mcpManager);
-      setupServiceCallbacks(activeTab, this.plugin);
-    } catch {
-      // Non-fatal - service will be initialized on first query
-    }
+    // No pre-warm: all tabs stay cold until first send
   }
 
   // ============================================

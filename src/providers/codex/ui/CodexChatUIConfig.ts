@@ -1,5 +1,6 @@
 import type {
   ProviderChatUIConfig,
+  ProviderPermissionModeToggleConfig,
   ProviderReasoningOption,
   ProviderUIOption,
 } from '../../../core/providers/types';
@@ -15,7 +16,15 @@ const EFFORT_LEVELS: ProviderReasoningOption[] = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'XHigh' },
 ];
+
+const CODEX_PERMISSION_MODE_TOGGLE: ProviderPermissionModeToggleConfig = {
+  inactiveValue: 'normal',
+  inactiveLabel: 'Safe',
+  activeValue: 'yolo',
+  activeLabel: 'YOLO',
+};
 
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 
@@ -73,7 +82,7 @@ export const codexChatUIConfig: ProviderChatUIConfig = {
     return ids;
   },
 
-  getPermissionModeToggle() {
-    return null;
+  getPermissionModeToggle(): ProviderPermissionModeToggleConfig {
+    return CODEX_PERMISSION_MODE_TOGGLE;
   },
 };

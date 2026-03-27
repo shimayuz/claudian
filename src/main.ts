@@ -105,7 +105,7 @@ export default class ClaudianPlugin extends Plugin {
       editorCallback: async (editor: Editor, view: MarkdownView) => {
         // Inline edit is Claude-only
         const activeTab = this.getView()?.getActiveTab();
-        const activeProviderId = activeTab?.service?.providerId ?? activeTab?.providerId ?? this.settings.activeProvider;
+        const activeProviderId = activeTab?.service?.providerId ?? activeTab?.providerId ?? 'claude';
         if (activeProviderId !== 'claude') {
           new Notice('Inline edit is only available with the Claude provider.');
           return;
@@ -509,7 +509,7 @@ export default class ClaudianPlugin extends Plugin {
     providerId?: ProviderId;
     sessionId?: string;
   }): Promise<Conversation> {
-    const providerId = options?.providerId ?? this.settings.activeProvider as ProviderId;
+    const providerId = options?.providerId ?? 'claude' as ProviderId;
     const sessionId = options?.sessionId;
     const conversationId = sessionId ?? this.generateConversationId();
     const conversation: Conversation = {

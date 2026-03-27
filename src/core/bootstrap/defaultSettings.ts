@@ -61,7 +61,7 @@ export const DEFAULT_CLAUDIAN_SETTINGS: ClaudianSettings = {
   loadUserClaudeSettings: true,
 
   // Provider selection
-  activeProvider: 'claude',
+  settingsProvider: 'claude',
   codexEnabled: false,
   savedProviderModel: {},
   savedProviderEffort: {},

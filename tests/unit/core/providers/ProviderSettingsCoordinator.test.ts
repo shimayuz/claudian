@@ -6,6 +6,63 @@ describe('ProviderSettingsCoordinator', () => {
   describe('normalizeProviderSelection', () => {
     it('falls back to claude when codex is disabled', () => {
       const settings: Record<string, unknown> = {
+        settingsProvider: 'codex',
+        codexEnabled: false,
+      };
+
+      const changed = ProviderSettingsCoordinator.normalizeProviderSelection(settings);
+
+      expect(changed).toBe(true);
+      expect(settings.settingsProvider).toBe('claude');
+    });
+
+    it('falls back to claude for unknown providers', () => {
+      const settings: Record<string, unknown> = {
+        settingsProvider: 'mystery-provider',
+        codexEnabled: true,
+      };
+
+      const changed = ProviderSettingsCoordinator.normalizeProviderSelection(settings);
+
+      expect(changed).toBe(true);
+      expect(settings.settingsProvider).toBe('claude');
+    });
+
+    it('migrates legacy activeProvider field to settingsProvider', () => {
+      const settings: Record<string, unknown> = {
+        activeProvider: 'codex',
+        codexEnabled: true,
+      };
+
+      const changed = ProviderSettingsCoordinator.normalizeProviderSelection(settings);
+
+      expect(changed).toBe(true);
+      expect(settings.settingsProvider).toBe('codex');
+      expect(settings.activeProvider).toBeUndefined();
+    });
+
+    it('migrates activeProvider even when settingsProvider exists from defaults', () => {
+      const settings: Record<string, unknown> = {
+        settingsProvider: 'claude',  // from defaults
+        activeProvider: 'codex',     // persisted legacy
+        codexEnabled: true,
+      };
+      const changed = ProviderSettingsCoordinator.normalizeProviderSelection(settings);
+      expect(changed).toBe(true);
+      expect(settings.settingsProvider).toBe('codex');
+      expect(settings.activeProvider).toBeUndefined();
+    });
+
+    it('returns false when already normalized (no-op)', () => {
+      const settings: Record<string, unknown> = {
+        settingsProvider: 'claude',
+        codexEnabled: false,
+      };
+      expect(ProviderSettingsCoordinator.normalizeProviderSelection(settings)).toBe(false);
+    });
+
+    it('migrates and normalizes legacy activeProvider in one step', () => {
+      const settings: Record<string, unknown> = {
         activeProvider: 'codex',
         codexEnabled: false,
       };
@@ -13,19 +70,8 @@ describe('ProviderSettingsCoordinator', () => {
       const changed = ProviderSettingsCoordinator.normalizeProviderSelection(settings);
 
       expect(changed).toBe(true);
-      expect(settings.activeProvider).toBe('claude');
-    });
-
-    it('falls back to claude for unknown providers', () => {
-      const settings: Record<string, unknown> = {
-        activeProvider: 'mystery-provider',
-        codexEnabled: true,
-      };
-
-      const changed = ProviderSettingsCoordinator.normalizeProviderSelection(settings);
-
-      expect(changed).toBe(true);
-      expect(settings.activeProvider).toBe('claude');
+      expect(settings.settingsProvider).toBe('claude');
+      expect(settings.activeProvider).toBeUndefined();
     });
   });
 
@@ -74,9 +120,9 @@ describe('ProviderSettingsCoordinator', () => {
   });
 
   describe('projectActiveProviderState', () => {
-    it('projects saved model/effort/budget for the active provider', () => {
+    it('projects saved model/effort/budget for the settings provider', () => {
       const settings: Record<string, unknown> = {
-        activeProvider: 'codex',
+        settingsProvider: 'codex',
         model: 'haiku',
         effortLevel: 'high',
         thinkingBudget: 'off',
@@ -92,7 +138,7 @@ describe('ProviderSettingsCoordinator', () => {
       expect(settings.thinkingBudget).toBe('1024');
     });
 
-    it('defaults to claude when activeProvider is not set', () => {
+    it('defaults to claude when settingsProvider is not set', () => {
       const settings: Record<string, unknown> = {
         model: 'old-model',
         effortLevel: 'low',
@@ -111,7 +157,7 @@ describe('ProviderSettingsCoordinator', () => {
 
     it('does not overwrite when no saved values exist', () => {
       const settings: Record<string, unknown> = {
-        activeProvider: 'claude',
+        settingsProvider: 'claude',
         model: 'haiku',
         effortLevel: 'high',
         thinkingBudget: 'off',
@@ -129,7 +175,7 @@ describe('ProviderSettingsCoordinator', () => {
 
     it('handles missing saved maps gracefully', () => {
       const settings: Record<string, unknown> = {
-        activeProvider: 'claude',
+        settingsProvider: 'claude',
         model: 'haiku',
         effortLevel: 'high',
         thinkingBudget: 'off',
@@ -143,9 +189,9 @@ describe('ProviderSettingsCoordinator', () => {
   });
 
   describe('persistProjectedProviderState', () => {
-    it('stores the current top-level projection for the active provider', () => {
+    it('stores the current top-level projection for the settings provider', () => {
       const settings: Record<string, unknown> = {
-        activeProvider: 'codex',
+        settingsProvider: 'codex',
         model: 'gpt-5.4',
         effortLevel: 'low',
         thinkingBudget: 'off',
@@ -170,7 +216,7 @@ describe('ProviderSettingsCoordinator', () => {
   describe('projectProviderState', () => {
     it('seeds a provider projection from provider defaults when no saved values exist', () => {
       const settings: Record<string, unknown> = {
-        activeProvider: 'claude',
+        settingsProvider: 'claude',
         environmentVariables: '',
         model: 'haiku',
         effortLevel: 'high',
@@ -196,7 +242,7 @@ describe('ProviderSettingsCoordinator', () => {
       } as unknown as Conversation;
 
       const settings: Record<string, unknown> = {
-        activeProvider: 'claude',
+        settingsProvider: 'claude',
         model: 'haiku',
         effortLevel: 'high',
         thinkingBudget: 'off',

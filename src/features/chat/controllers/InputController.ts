@@ -68,6 +68,8 @@ export interface InputControllerDeps {
   resetInputHeight: () => void;
   getAgentService?: () => ChatRuntime | null;
   getSubagentManager: () => SubagentManager;
+  /** Tab-level provider fallback for blank tabs (derived from draft model). */
+  getTabProviderId?: () => ProviderId;
   /** Returns true if ready. */
   ensureServiceInitialized?: () => Promise<boolean>;
   openConversation?: (conversationId: string) => Promise<void>;
@@ -101,7 +103,7 @@ export class InputController {
       return this.deps.plugin.getConversationSync(conversationId)?.providerId ?? DEFAULT_CHAT_PROVIDER_ID;
     }
 
-    return this.deps.plugin.settings.activeProvider as ProviderId;
+    return this.deps.getTabProviderId?.() ?? DEFAULT_CHAT_PROVIDER_ID;
   }
 
   private getActiveCapabilities(): ProviderCapabilities {

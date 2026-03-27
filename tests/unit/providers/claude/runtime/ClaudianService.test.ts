@@ -181,31 +181,27 @@ describe('ClaudianService', () => {
       expect(service.getSessionId()).toBeNull();
     });
 
-    it('should pass externalContextPaths to ensureReady when setting session ID', async () => {
+    it('should NOT call ensureReady when setting session ID (passive sync)', async () => {
       const ensureReadySpy = jest.spyOn(service, 'ensureReady').mockResolvedValue(true);
 
       service.setSessionId('test-session', ['/path/a', '/path/b']);
 
-      // ensureReady is called asynchronously, give it a tick
       await Promise.resolve();
 
-      expect(ensureReadySpy).toHaveBeenCalledWith({
-        sessionId: 'test-session',
-        externalContextPaths: ['/path/a', '/path/b'],
-      });
+      // setSessionId is now passive — runtime starts on demand in query()
+      expect(ensureReadySpy).not.toHaveBeenCalled();
+      expect(service.getSessionId()).toBe('test-session');
     });
 
-    it('should pass undefined externalContextPaths when not provided', async () => {
+    it('should track externalContextPaths for later use without starting runtime', async () => {
       const ensureReadySpy = jest.spyOn(service, 'ensureReady').mockResolvedValue(true);
 
-      service.setSessionId('test-session');
+      service.setSessionId('test-session', ['/path/a']);
 
       await Promise.resolve();
 
-      expect(ensureReadySpy).toHaveBeenCalledWith({
-        sessionId: 'test-session',
-        externalContextPaths: undefined,
-      });
+      expect(ensureReadySpy).not.toHaveBeenCalled();
+      expect(service.getSessionId()).toBe('test-session');
     });
   });
 

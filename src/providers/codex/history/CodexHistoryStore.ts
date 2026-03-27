@@ -3,6 +3,13 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { ChatMessage, ContentBlock, ToolCallInfo } from '../../../core/types';
+import {
+  isCodexToolOutputError,
+  normalizeCodexToolInput,
+  normalizeCodexToolName,
+  normalizeCodexToolResult,
+  parseCodexArguments,
+} from '../normalization';
 
 interface CodexEvent {
   type: string;
@@ -45,17 +52,25 @@ interface PersistedReasoningPayload {
   text?: string;
 }
 
-interface PersistedFunctionCallPayload {
-  type: 'function_call';
+interface PersistedToolCallPayload {
+  type: 'function_call' | 'custom_tool_call';
   name?: string;
   arguments?: string;
   call_id?: string;
+  input?: string;
 }
 
-interface PersistedFunctionCallOutputPayload {
-  type: 'function_call_output';
+interface PersistedToolCallOutputPayload {
+  type: 'function_call_output' | 'custom_tool_call_output';
   call_id?: string;
   output?: string;
+}
+
+interface PersistedWebSearchCallPayload {
+  type: 'web_search_call';
+  action?: { query?: string };
+  status?: string;
+  call_id?: string;
 }
 
 interface PersistedEventPayload {
@@ -75,8 +90,9 @@ interface TurnAccumulator {
 type PersistedPayload =
   | PersistedMessagePayload
   | PersistedReasoningPayload
-  | PersistedFunctionCallPayload
-  | PersistedFunctionCallOutputPayload
+  | PersistedToolCallPayload
+  | PersistedToolCallOutputPayload
+  | PersistedWebSearchCallPayload
   | PersistedEventPayload
   | undefined;
 
@@ -185,6 +201,30 @@ function parseTimestamp(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const CODEX_SYSTEM_MESSAGE_PREFIXES = [
+  '# AGENTS.md instructions',
+  '<environment_context>',
+];
+
+// Matches bracket-format context appended by encodeCodexTurn
+const CODEX_BRACKET_CONTEXT_PATTERN = /\n\[(?:Current note|Editor selection from|Browser selection from|Canvas selection from)\b/;
+
+function isCodexSystemMessage(text: string): boolean {
+  const trimmed = text.trimStart();
+  return CODEX_SYSTEM_MESSAGE_PREFIXES.some(prefix => trimmed.startsWith(prefix));
+}
+
+function extractCodexDisplayContent(text: string): string | undefined {
+  if (!text) return undefined;
+
+  const bracketMatch = text.match(CODEX_BRACKET_CONTEXT_PATTERN);
+  if (bracketMatch?.index !== undefined) {
+    return text.substring(0, bracketMatch.index).trim();
+  }
+
+  return undefined;
+}
+
 function extractMessageText(content: PersistedMessagePart[] | undefined): string {
   if (!Array.isArray(content)) {
     return '';
@@ -206,49 +246,7 @@ function extractReasoningText(payload: PersistedReasoningPayload | PersistedEven
   return typeof payload.text === 'string' ? payload.text.trim() : '';
 }
 
-function parseToolArguments(raw: string | undefined): Record<string, unknown> {
-  if (!raw) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return { value: parsed };
-  } catch {
-    return { raw };
-  }
-}
-
-function mapPersistedToolName(name: string | undefined): string {
-  if (name === 'shell_command' || name === 'exec_command') {
-    return 'Bash';
-  }
-
-  return name ?? 'tool';
-}
-
-function buildPersistedToolInput(
-  name: string | undefined,
-  input: Record<string, unknown>,
-): Record<string, unknown> {
-  if ((name === 'shell_command' || name === 'exec_command') && typeof input.command === 'string') {
-    return { command: input.command };
-  }
-
-  return input;
-}
-
-function isToolOutputError(output: string): boolean {
-  const exitCodeMatch = output.match(/(?:Exit code:|Process exited with code)\s*(\d+)/i);
-  if (!exitCodeMatch) {
-    return false;
-  }
-
-  return Number(exitCodeMatch[1]) !== 0;
-}
+// Local helpers removed — now using shared normalization layer.
 
 function processLegacyItem(
   eventType: string,
@@ -277,15 +275,16 @@ function processLegacyItem(
       if (eventType === 'item.started') {
         turn.toolCalls.push({
           id: item.id,
-          name: 'Bash',
-          input: { command: item.command ?? '' },
+          name: normalizeCodexToolName(item.type),
+          input: normalizeCodexToolInput(item.type, { command: item.command ?? '' }),
           status: 'running',
         });
         turn.contentBlocks.push({ type: 'tool_use', toolId: item.id });
       } else if (eventType === 'item.completed') {
         const tc = turn.toolCalls.find(tool => tool.id === item.id);
         if (tc) {
-          tc.result = item.aggregated_output ?? '';
+          const rawOutput = item.aggregated_output ?? '';
+          tc.result = normalizeCodexToolResult(tc.name, rawOutput);
           tc.status = item.exit_code === 0 ? 'completed' : 'error';
         }
       }
@@ -299,7 +298,7 @@ function processLegacyItem(
           const paths = changes.map(change => `${change.kind}: ${change.path}`).join(', ');
           turn.toolCalls.push({
             id: item.id,
-            name: 'apply_patch',
+            name: normalizeCodexToolName('file_change'),
             input: { changes },
             status: item.status === 'completed' ? 'completed' : 'error',
             result: paths ? `Applied: ${paths}` : 'Applied',
@@ -316,8 +315,8 @@ function processLegacyItem(
       if (eventType === 'item.started') {
         turn.toolCalls.push({
           id: item.id,
-          name: 'WebSearch',
-          input: { query: item.query ?? '' },
+          name: normalizeCodexToolName(item.type),
+          input: normalizeCodexToolInput(item.type, { query: item.query ?? '' }),
           status: 'running',
         });
         turn.contentBlocks.push({ type: 'tool_use', toolId: item.id });
@@ -355,6 +354,88 @@ function processLegacyItem(
   }
 }
 
+function processPersistedToolCall(
+  payload: PersistedToolCallPayload,
+  timestamp: number,
+  turn: TurnAccumulator,
+): void {
+  const callId = payload.call_id;
+  if (!callId) return;
+
+  touchTurn(turn, timestamp);
+  const rawArgs = payload.arguments ?? payload.input;
+  const parsedArgs = parseCodexArguments(rawArgs);
+  const normalizedName = normalizeCodexToolName(payload.name);
+  const normalizedInput = normalizeCodexToolInput(payload.name, parsedArgs);
+
+  turn.toolCalls.push({
+    id: callId,
+    name: normalizedName,
+    input: normalizedInput,
+    status: 'running',
+  });
+  turn.contentBlocks.push({ type: 'tool_use', toolId: callId });
+}
+
+function processPersistedToolOutput(
+  payload: PersistedToolCallOutputPayload,
+  timestamp: number,
+  turn: TurnAccumulator,
+): void {
+  const callId = payload.call_id;
+  if (!callId) return;
+
+  touchTurn(turn, timestamp);
+  const rawOutput = payload.output ?? '';
+  const existing = turn.toolCalls.find(tool => tool.id === callId);
+  const normalizedResult = normalizeCodexToolResult(
+    existing?.name ?? 'tool',
+    rawOutput,
+  );
+
+  if (existing) {
+    existing.result = normalizedResult;
+    existing.status = isCodexToolOutputError(rawOutput) ? 'error' : 'completed';
+  } else {
+    turn.toolCalls.push({
+      id: callId,
+      name: 'tool',
+      input: {},
+      status: isCodexToolOutputError(rawOutput) ? 'error' : 'completed',
+      result: normalizedResult,
+    });
+  }
+}
+
+function processPersistedWebSearchCall(
+  payload: PersistedWebSearchCallPayload,
+  timestamp: number,
+  turn: TurnAccumulator,
+): void {
+  const callId = payload.call_id;
+  if (!callId) return;
+
+  touchTurn(turn, timestamp);
+  const input = normalizeCodexToolInput('web_search_call', {
+    action: payload.action ?? {},
+  });
+
+  const existing = turn.toolCalls.find(tool => tool.id === callId);
+  if (existing) return;
+
+  const isTerminal = payload.status === 'completed' || payload.status === 'failed'
+    || payload.status === 'error' || payload.status === 'cancelled';
+
+  turn.toolCalls.push({
+    id: callId,
+    name: 'WebSearch',
+    input,
+    status: isTerminal ? (payload.status === 'completed' ? 'completed' : 'error') : 'running',
+    ...(isTerminal ? { result: 'Search complete' } : {}),
+  });
+  turn.contentBlocks.push({ type: 'tool_use', toolId: callId });
+}
+
 function processPersistedPayload(
   payload: PersistedPayload,
   timestamp: number,
@@ -371,14 +452,20 @@ function processPersistedPayload(
       const messagePayload = payload as PersistedMessagePayload;
       const text = extractMessageText(messagePayload.content);
       if (messagePayload.role === 'user') {
+        if (isCodexSystemMessage(text)) {
+          break;
+        }
+
         msgIndex = flushTurn(turn, messages, msgIndex);
         turn = newTurn();
 
         if (text) {
+          const displayContent = extractCodexDisplayContent(text);
           messages.push({
             id: `codex-msg-${msgIndex}`,
             role: 'user',
             content: text,
+            ...(displayContent !== undefined ? { displayContent } : {}),
             timestamp: timestamp || Date.now(),
           });
           msgIndex += 1;
@@ -403,52 +490,19 @@ function processPersistedPayload(
       break;
     }
 
-    case 'function_call': {
-      const functionCallPayload = payload as PersistedFunctionCallPayload;
-      const callId = functionCallPayload.call_id;
-      if (!callId) {
-        break;
-      }
-
-      touchTurn(turn, timestamp);
-      const parsedArguments = parseToolArguments(functionCallPayload.arguments);
-      const toolCall: ToolCallInfo = {
-        id: callId,
-        name: mapPersistedToolName(functionCallPayload.name),
-        input: buildPersistedToolInput(functionCallPayload.name, parsedArguments),
-        status: 'running',
-      };
-
-      turn.toolCalls.push(toolCall);
-      turn.contentBlocks.push({ type: 'tool_use', toolId: callId });
+    case 'function_call':
+    case 'custom_tool_call':
+      processPersistedToolCall(payload as PersistedToolCallPayload, timestamp, turn);
       break;
-    }
 
-    case 'function_call_output': {
-      const functionCallOutputPayload = payload as PersistedFunctionCallOutputPayload;
-      const callId = functionCallOutputPayload.call_id;
-      if (!callId) {
-        break;
-      }
-
-      touchTurn(turn, timestamp);
-      const existing = turn.toolCalls.find(tool => tool.id === callId);
-      const output = functionCallOutputPayload.output ?? '';
-
-      if (existing) {
-        existing.result = output;
-        existing.status = isToolOutputError(output) ? 'error' : 'completed';
-      } else {
-        turn.toolCalls.push({
-          id: callId,
-          name: 'tool',
-          input: {},
-          status: isToolOutputError(output) ? 'error' : 'completed',
-          result: output,
-        });
-      }
+    case 'function_call_output':
+    case 'custom_tool_call_output':
+      processPersistedToolOutput(payload as PersistedToolCallOutputPayload, timestamp, turn);
       break;
-    }
+
+    case 'web_search_call':
+      processPersistedWebSearchCall(payload as PersistedWebSearchCallPayload, timestamp, turn);
+      break;
 
     default:
       break;

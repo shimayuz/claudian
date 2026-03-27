@@ -3,6 +3,8 @@ import { setIcon } from 'obsidian';
 import { extractResolvedAnswersFromResultText, type TodoItem } from '../../../core/tools';
 import { getToolIcon, MCP_ICON_MARKER } from '../../../core/tools/toolIcons';
 import {
+  isCodexAgentLifecycleTool,
+  TOOL_APPLY_PATCH,
   TOOL_ASK_USER_QUESTION,
   TOOL_BASH,
   TOOL_EDIT,
@@ -18,6 +20,7 @@ import {
   TOOL_WEB_FETCH,
   TOOL_WEB_SEARCH,
   TOOL_WRITE,
+  TOOL_WRITE_STDIN,
 } from '../../../core/tools/toolNames';
 import type { ToolCallInfo } from '../../../core/types';
 import { MCP_ICON_SVG } from '../../../shared/icons';
@@ -79,7 +82,14 @@ export function getToolSummary(name: string, input: Record<string, unknown>): st
       return truncateText(parseToolSearchQuery(input.query as string | undefined), 60);
     case TOOL_TODO_WRITE:
       return '';
+    case TOOL_APPLY_PATCH:
+      return getApplyPatchSummary(input);
+    case TOOL_WRITE_STDIN:
+      return getWriteStdinSummary(input);
     default:
+      if (isCodexAgentLifecycleTool(name)) {
+        return getCodexLifecycleSummary(name, input);
+      }
       return '';
   }
 }
@@ -131,7 +141,19 @@ export function getToolLabel(name: string, input: Record<string, unknown>): stri
       return 'Entering plan mode';
     case TOOL_EXIT_PLAN_MODE:
       return 'Plan complete';
+    case TOOL_APPLY_PATCH: {
+      const summary = getApplyPatchSummary(input);
+      return summary ? `apply_patch: ${summary}` : 'apply_patch';
+    }
+    case TOOL_WRITE_STDIN: {
+      const summary = getWriteStdinSummary(input);
+      return summary ? `write_stdin: ${summary}` : 'write_stdin';
+    }
     default:
+      if (isCodexAgentLifecycleTool(name)) {
+        const summary = getCodexLifecycleSummary(name, input);
+        return summary ? `${name}: ${summary}` : name;
+      }
       return name;
   }
 }
@@ -140,6 +162,62 @@ export function fileNameOnly(filePath: string): string {
   if (!filePath) return '';
   const normalized = filePath.replace(/\\/g, '/');
   return normalized.split('/').pop() ?? normalized;
+}
+
+function getApplyPatchSummary(input: Record<string, unknown>): string {
+  // Extract file paths from patch text markers
+  const patchText = typeof input.patch === 'string' ? input.patch : '';
+  const patchFiles = [...patchText.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)]
+    .map(m => m[1]?.trim() ?? '');
+
+  // Also check changes array
+  const changes = input.changes;
+  const changeFiles = Array.isArray(changes)
+    ? (changes as Array<{ path?: string }>)
+        .map(c => c.path)
+        .filter((p): p is string => !!p)
+    : [];
+
+  const files = [...new Set([...patchFiles, ...changeFiles])];
+  if (files.length === 0) return patchText ? 'patch' : '';
+  if (files.length === 1) return fileNameOnly(files[0]);
+  return `${files.length} files`;
+}
+
+function getWriteStdinSummary(input: Record<string, unknown>): string {
+  const sessionId = input.session_id ?? input.sessionId;
+  const chars = typeof input.chars === 'string' ? input.chars.replace(/\n/g, '\\n') : '';
+  if (chars) {
+    const preview = chars.length > 24 ? `${chars.slice(0, 24)}...` : chars;
+    return sessionId ? `#${String(sessionId)} ${preview}` : preview;
+  }
+  return sessionId ? `#${String(sessionId)}` : '';
+}
+
+function getCodexLifecycleSummary(name: string, input: Record<string, unknown>): string {
+  switch (name) {
+    case 'spawn_agent': {
+      const msg = typeof input.message === 'string' ? input.message : '';
+      return msg.length > 50 ? `${msg.slice(0, 50)}...` : msg;
+    }
+    case 'send_input': {
+      const msg = typeof input.message === 'string' ? input.message : '';
+      return msg.length > 40 ? `${msg.slice(0, 40)}...` : msg;
+    }
+    case 'wait': {
+      const ids = Array.isArray(input.ids) ? input.ids.length : 0;
+      const timeoutMs = typeof input.timeout_ms === 'number' ? input.timeout_ms : undefined;
+      const parts: string[] = [];
+      if (ids > 0) parts.push(`${ids} agent${ids === 1 ? '' : 's'}`);
+      if (timeoutMs !== undefined) parts.push(`${Math.round(timeoutMs / 1000)}s`);
+      return parts.join(', ');
+    }
+    case 'resume_agent':
+    case 'close_agent':
+      return '';
+    default:
+      return '';
+  }
 }
 
 function shortenPath(filePath: string | undefined): string {
@@ -288,14 +366,55 @@ function renderWebFetchExpanded(container: HTMLElement, result: string): void {
   }
 }
 
+function renderApplyPatchExpanded(container: HTMLElement, result: string): void {
+  // Show affected files from result text
+  const fileMatches = [...result.matchAll(/(?:update|add|delete|create|modify|Applied:\s*)(?:\w+:\s*)?([^\n,]+)/gi)];
+  if (fileMatches.length > 0) {
+    const linesEl = container.createDiv({ cls: 'claudian-tool-lines' });
+    for (const match of fileMatches) {
+      const filePath = match[1]?.trim();
+      if (filePath) {
+        const lineEl = linesEl.createDiv({ cls: 'claudian-tool-line' });
+        lineEl.setText(filePath);
+      }
+    }
+    return;
+  }
+  renderLinesExpanded(container, result, 15);
+}
+
+function renderCodexLifecycleExpanded(container: HTMLElement, result: string): void {
+  // Try to parse as JSON for structured display
+  const trimmed = result.trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      const linesEl = container.createDiv({ cls: 'claudian-tool-lines' });
+      for (const [key, value] of Object.entries(parsed)) {
+        const lineEl = linesEl.createDiv({ cls: 'claudian-tool-line' });
+        const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        lineEl.setText(`${key}: ${displayValue}`);
+      }
+      return;
+    } catch { /* fall through to plain text */ }
+  }
+  renderLinesExpanded(container, result, 20);
+}
+
 export function renderExpandedContent(container: HTMLElement, toolName: string, result: string | undefined): void {
   if (!result) {
     container.createDiv({ cls: 'claudian-tool-empty', text: 'No result' });
     return;
   }
 
+  if (isCodexAgentLifecycleTool(toolName)) {
+    renderCodexLifecycleExpanded(container, result);
+    return;
+  }
+
   switch (toolName) {
     case TOOL_BASH:
+    case TOOL_WRITE_STDIN:
       renderLinesExpanded(container, result, 20);
       break;
     case TOOL_READ:
@@ -314,6 +433,9 @@ export function renderExpandedContent(container: HTMLElement, toolName: string, 
       break;
     case TOOL_TOOL_SEARCH:
       renderToolSearchExpanded(container, result);
+      break;
+    case TOOL_APPLY_PATCH:
+      renderApplyPatchExpanded(container, result);
       break;
     default:
       renderLinesExpanded(container, result, 20);

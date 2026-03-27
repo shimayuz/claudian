@@ -194,11 +194,352 @@ describe('CodexHistoryStore', () => {
         }),
       ]);
 
+      // Result should be normalized (Output:\n stripped)
+      expect(messages[1].toolCalls![0].result).toBe(' src/main.ts | 2 +-');
+
       expect(messages[1].contentBlocks).toEqual([
         { type: 'thinking', content: 'Thinking through the changes.' },
         { type: 'tool_use', toolId: 'call_1' },
         { type: 'text', content: 'The diff looks good.' },
       ]);
+    });
+  });
+
+  describe('parseCodexSessionFile - persisted tools', () => {
+    it('restores exec_command as Bash with normalized result', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-persisted-tools.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      expect(assistantMsg).toBeDefined();
+
+      const bashTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'Bash');
+      expect(bashTool).toBeDefined();
+      expect(bashTool!.id).toBe('call_exec_1');
+      expect(bashTool!.input).toEqual({ command: 'cat src/main.ts' });
+      expect(bashTool!.status).toBe('completed');
+      // Result should be normalized: "Output:\n" prefix stripped
+      expect(bashTool!.result).toBe("import { Plugin } from 'obsidian';");
+    });
+
+    it('restores custom_tool_call apply_patch as native apply_patch', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-persisted-tools.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const patchTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'apply_patch');
+      expect(patchTool).toBeDefined();
+      expect(patchTool!.id).toBe('call_patch_1');
+      expect(patchTool!.input.patch).toContain('Update File: src/main.ts');
+      expect(patchTool!.status).toBe('completed');
+    });
+
+    it('restores update_plan as TodoWrite', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-persisted-tools.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const todoTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'TodoWrite');
+      expect(todoTool).toBeDefined();
+      expect(todoTool!.id).toBe('call_plan_1');
+      expect(todoTool!.input.todos).toEqual([
+        expect.objectContaining({ content: 'Fix the bug', status: 'completed' }),
+        expect.objectContaining({ content: 'Run tests', status: 'in_progress' }),
+      ]);
+    });
+
+    it('restores request_user_input as AskUserQuestion', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-persisted-tools.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const askTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'AskUserQuestion');
+      expect(askTool).toBeDefined();
+      expect(askTool!.id).toBe('call_ask_1');
+      expect(askTool!.input.questions).toEqual([
+        expect.objectContaining({ question: 'Should I also update the tests?', id: 'q1' }),
+      ]);
+    });
+
+    it('restores view_image as Read', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-persisted-tools.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const readTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'Read');
+      expect(readTool).toBeDefined();
+      expect(readTool!.id).toBe('call_img_1');
+      expect(readTool!.input.file_path).toBe('/tmp/screenshot.png');
+    });
+
+    it('restores write_stdin as native write_stdin', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-persisted-tools.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const stdinTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'write_stdin');
+      expect(stdinTool).toBeDefined();
+      expect(stdinTool!.id).toBe('call_stdin_1');
+      expect(stdinTool!.input.session_id).toBe('sess_1');
+    });
+  });
+
+  describe('parseCodexSessionFile - agent lifecycle', () => {
+    it('restores agent lifecycle tools with native names', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-agent-lifecycle.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      expect(assistantMsg).toBeDefined();
+      const toolNames = assistantMsg!.toolCalls!.map(tc => tc.name);
+
+      expect(toolNames).toContain('spawn_agent');
+      expect(toolNames).toContain('send_input');
+      expect(toolNames).toContain('wait');
+      expect(toolNames).toContain('resume_agent');
+      expect(toolNames).toContain('close_agent');
+
+      // Should NOT be mapped to Agent/Task
+      expect(toolNames).not.toContain('Agent');
+      expect(toolNames).not.toContain('Task');
+    });
+
+    it('preserves spawn_agent input fields', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-agent-lifecycle.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const spawnTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'spawn_agent');
+      expect(spawnTool!.input).toEqual({
+        message: 'Update the imports in utils.ts',
+        agent_type: 'code-writer',
+      });
+    });
+
+    it('preserves wait input fields', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-agent-lifecycle.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const waitTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'wait');
+      expect(waitTool!.input).toEqual({
+        ids: ['agent_001'],
+        timeout_ms: 30000,
+      });
+    });
+  });
+
+  describe('parseCodexSessionContent - system-injected user messages', () => {
+    it('should skip AGENTS.md instructions injected as user message', () => {
+      const content = [
+        JSON.stringify({ type: 'session_meta', id: 'test-session' }),
+        JSON.stringify({
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'developer',
+            content: [{ type: 'input_text', text: '<permissions instructions>\nSandbox mode...\n</permissions instructions>' }],
+          },
+        }),
+        JSON.stringify({
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [
+              { type: 'input_text', text: '# AGENTS.md instructions for /Users/test/project\n\n<INSTRUCTIONS>\nDo good work.\n</INSTRUCTIONS>' },
+              { type: 'input_text', text: '<environment_context>\n  <cwd>/Users/test/project</cwd>\n</environment_context>' },
+            ],
+          },
+        }),
+        JSON.stringify({ type: 'event_msg', payload: { type: 'task_started' } }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Fix the bug in main.ts' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'Done.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      // AGENTS.md message should be filtered out; only real user + assistant remain
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toMatchObject({ role: 'user', content: 'Fix the bug in main.ts' });
+      expect(messages[1]).toMatchObject({ role: 'assistant', content: 'Done.' });
+    });
+
+    it('should skip standalone <environment_context> user message', () => {
+      const content = [
+        JSON.stringify({
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: '<environment_context>\n  <cwd>/Users/test</cwd>\n</environment_context>' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'Ready.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ role: 'assistant', content: 'Ready.' });
+    });
+
+    it('should set displayContent stripping bracket context from user messages', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Fix the bug\n[Current note: notes/bug.md]' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'Done.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toMatchObject({
+        role: 'user',
+        content: 'Fix the bug\n[Current note: notes/bug.md]',
+        displayContent: 'Fix the bug',
+      });
+    });
+
+    it('should set displayContent stripping editor selection context', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Explain this\n[Editor selection from notes/code.md:\nconst x = 1;\n]' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'It declares a variable.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages[0]).toMatchObject({
+        role: 'user',
+        displayContent: 'Explain this',
+      });
+    });
+
+    it('should not set displayContent on plain user messages', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'What does main.ts do?' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'It initializes the plugin.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages[0]).toMatchObject({ role: 'user', content: 'What does main.ts do?' });
+      expect(messages[0].displayContent).toBeUndefined();
+    });
+
+    it('should NOT skip real user messages', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'What does main.ts do?' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'It initializes the plugin.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toMatchObject({ role: 'user', content: 'What does main.ts do?' });
+    });
+  });
+
+  describe('parseCodexSessionFile - persisted web_search_call', () => {
+    it('restores web_search_call as WebSearch', () => {
+      const filePath = path.join(FIXTURES_DIR, 'codex-session-websearch-persisted.jsonl');
+      const messages = parseCodexSessionFile(filePath);
+
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      expect(assistantMsg).toBeDefined();
+
+      const searchTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'WebSearch');
+      expect(searchTool).toBeDefined();
+      expect(searchTool!.id).toBe('call_ws_1');
+      expect(searchTool!.input.query).toBe('obsidian plugin API');
+      expect(searchTool!.status).toBe('completed');
     });
   });
 });

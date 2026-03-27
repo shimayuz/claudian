@@ -1,3 +1,4 @@
+export { getProviderForModel } from './modelRouting';
 export { ProviderRegistry } from './ProviderRegistry';
 export {
   ProviderSettingsCoordinator,

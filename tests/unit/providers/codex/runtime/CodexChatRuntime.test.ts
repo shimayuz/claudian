@@ -259,6 +259,171 @@ describe('CodexChatRuntime', () => {
     });
   });
 
+  describe('query - function_call/custom_tool_call events', () => {
+    it('should map function_call exec_command to Bash with normalized result', async () => {
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_fc1' },
+          { type: 'turn.started' },
+          { type: 'item.started', item: { id: 'fc_exec', type: 'function_call', name: 'exec_command', arguments: '{"command":"ls"}' } },
+          { type: 'item.completed', item: { id: 'fc_exec', type: 'function_call', name: 'exec_command', arguments: '{"command":"ls"}', output: 'Exit code: 0\nOutput:\nfile.txt' } },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      const chunks = await collectChunks(runtime.query(createTurn()));
+      const toolUse = chunks.find(c => c.type === 'tool_use');
+      const toolResult = chunks.find(c => c.type === 'tool_result');
+
+      expect(toolUse).toMatchObject({
+        type: 'tool_use',
+        id: 'fc_exec',
+        name: 'Bash',
+        input: { command: 'ls' },
+      });
+      expect(toolResult).toMatchObject({
+        type: 'tool_result',
+        id: 'fc_exec',
+        content: 'file.txt',
+        isError: false,
+      });
+    });
+
+    it('should map function_call update_plan to TodoWrite', async () => {
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_fc2' },
+          { type: 'turn.started' },
+          { type: 'item.started', item: { id: 'fc_plan', type: 'function_call', name: 'update_plan', arguments: '{"plan":[{"id":"1","title":"Fix bug","status":"completed"}]}' } },
+          { type: 'item.completed', item: { id: 'fc_plan', type: 'function_call', name: 'update_plan', arguments: '{"plan":[{"id":"1","title":"Fix bug","status":"completed"}]}', output: 'Plan updated.' } },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      const chunks = await collectChunks(runtime.query(createTurn()));
+      const toolUse = chunks.find(c => c.type === 'tool_use');
+
+      expect(toolUse).toMatchObject({
+        type: 'tool_use',
+        name: 'TodoWrite',
+      });
+      expect((toolUse as any).input.todos).toEqual([
+        expect.objectContaining({ content: 'Fix bug', status: 'completed' }),
+      ]);
+    });
+
+    it('should map function_call spawn_agent as native spawn_agent', async () => {
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_fc3' },
+          { type: 'turn.started' },
+          { type: 'item.started', item: { id: 'fc_spawn', type: 'function_call', name: 'spawn_agent', arguments: '{"message":"Do something","agent_type":"code-writer"}' } },
+          { type: 'item.completed', item: { id: 'fc_spawn', type: 'function_call', name: 'spawn_agent', output: '{"agent_id":"agent_001"}' } },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      const chunks = await collectChunks(runtime.query(createTurn()));
+      const toolUse = chunks.find(c => c.type === 'tool_use');
+
+      expect(toolUse).toMatchObject({
+        type: 'tool_use',
+        name: 'spawn_agent',
+        input: { message: 'Do something', agent_type: 'code-writer' },
+      });
+    });
+
+    it('should map custom_tool_call apply_patch as native apply_patch', async () => {
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_ct1' },
+          { type: 'turn.started' },
+          { type: 'item.started', item: { id: 'ct_patch', type: 'custom_tool_call', name: 'apply_patch', arguments: '{"patch":"*** Update File: foo.ts"}' } },
+          { type: 'item.completed', item: { id: 'ct_patch', type: 'custom_tool_call', name: 'apply_patch', output: 'Applied: update: foo.ts' } },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      const chunks = await collectChunks(runtime.query(createTurn()));
+      const toolUse = chunks.find(c => c.type === 'tool_use');
+      const toolResult = chunks.find(c => c.type === 'tool_result');
+
+      expect(toolUse).toMatchObject({
+        type: 'tool_use',
+        name: 'apply_patch',
+        input: { patch: '*** Update File: foo.ts' },
+      });
+      expect(toolResult).toMatchObject({
+        type: 'tool_result',
+        content: 'Applied: update: foo.ts',
+      });
+    });
+
+    it('should not emit duplicate tool_use for same item', async () => {
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_dedup' },
+          { type: 'turn.started' },
+          { type: 'item.started', item: { id: 'fc_dedup', type: 'function_call', name: 'exec_command', arguments: '{"command":"pwd"}' } },
+          { type: 'item.updated', item: { id: 'fc_dedup', type: 'function_call', name: 'exec_command', arguments: '{"command":"pwd"}' } },
+          { type: 'item.completed', item: { id: 'fc_dedup', type: 'function_call', name: 'exec_command', arguments: '{"command":"pwd"}', output: '/home' } },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      const chunks = await collectChunks(runtime.query(createTurn()));
+      const toolUseChunks = chunks.filter(c => c.type === 'tool_use');
+
+      expect(toolUseChunks).toHaveLength(1);
+    });
+
+    it('should handle function_call_output without prior function_call (orphaned output)', async () => {
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_orphan' },
+          { type: 'turn.started' },
+          { type: 'item.started', item: { id: 'out1', type: 'function_call_output', call_id: 'call_unknown', output: 'some result' } },
+          { type: 'item.completed', item: { id: 'out1', type: 'function_call_output', call_id: 'call_unknown', output: 'some result' } },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      const chunks = await collectChunks(runtime.query(createTurn()));
+      const toolResult = chunks.find(c => c.type === 'tool_result');
+      expect(toolResult).toMatchObject({
+        type: 'tool_result',
+        id: 'call_unknown',
+        content: 'some result',
+      });
+    });
+
+    it('should map web_search_call to WebSearch', async () => {
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_wsc' },
+          { type: 'turn.started' },
+          { type: 'item.started', item: { id: 'wsc_1', type: 'web_search_call', action: { query: 'obsidian api' } } },
+          { type: 'item.completed', item: { id: 'wsc_1', type: 'web_search_call', action: { query: 'obsidian api' }, status: 'completed' } },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      const chunks = await collectChunks(runtime.query(createTurn()));
+      const toolUse = chunks.find(c => c.type === 'tool_use');
+      const toolResult = chunks.find(c => c.type === 'tool_result');
+
+      expect(toolUse).toMatchObject({
+        type: 'tool_use',
+        name: 'WebSearch',
+        input: { query: 'obsidian api' },
+      });
+      expect(toolResult).toMatchObject({
+        type: 'tool_result',
+        content: 'Search complete',
+      });
+    });
+  });
+
   describe('query - turn lifecycle', () => {
     it('should emit usage and done on turn.completed', async () => {
       mockRunStreamed.mockResolvedValue({
@@ -335,6 +500,77 @@ describe('CodexChatRuntime', () => {
       expect(mockStartThread).toHaveBeenCalledWith(expect.objectContaining({
         additionalDirectories: ['/external/a', '/external/b'],
       }));
+    });
+  });
+
+  describe('query - permission mode', () => {
+    it('uses yolo mode (never + danger-full-access) when permissionMode is yolo', async () => {
+      const plugin = createMockPlugin();
+      plugin.settings.permissionMode = 'yolo';
+      const yoloRuntime = new CodexChatRuntime(plugin);
+
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_perm_yolo' },
+          { type: 'turn.started' },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      await collectChunks(yoloRuntime.query(createTurn()));
+
+      expect(mockStartThread).toHaveBeenCalledWith(expect.objectContaining({
+        approvalPolicy: 'never',
+        sandboxMode: 'danger-full-access',
+      }));
+
+      yoloRuntime.cleanup();
+    });
+
+    it('uses safe mode (on-request + workspace-write) when permissionMode is normal', async () => {
+      const plugin = createMockPlugin();
+      plugin.settings.permissionMode = 'normal';
+      const safeRuntime = new CodexChatRuntime(plugin);
+
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_perm_safe' },
+          { type: 'turn.started' },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      await collectChunks(safeRuntime.query(createTurn()));
+
+      expect(mockStartThread).toHaveBeenCalledWith(expect.objectContaining({
+        approvalPolicy: 'on-request',
+        sandboxMode: 'workspace-write',
+      }));
+
+      safeRuntime.cleanup();
+    });
+
+    it('falls back to safe mode when permissionMode is unrecognized', async () => {
+      const plugin = createMockPlugin();
+      plugin.settings.permissionMode = 'plan';
+      const planRuntime = new CodexChatRuntime(plugin);
+
+      mockRunStreamed.mockResolvedValue({
+        events: makeEvents([
+          { type: 'thread.started', thread_id: 'thread_perm_fallback' },
+          { type: 'turn.started' },
+          { type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } },
+        ]),
+      });
+
+      await collectChunks(planRuntime.query(createTurn()));
+
+      expect(mockStartThread).toHaveBeenCalledWith(expect.objectContaining({
+        approvalPolicy: 'on-request',
+        sandboxMode: 'workspace-write',
+      }));
+
+      planRuntime.cleanup();
     });
   });
 

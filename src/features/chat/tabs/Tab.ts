@@ -2,7 +2,9 @@ import type { Component } from 'obsidian';
 import { Notice } from 'obsidian';
 
 import type { McpServerManager } from '../../../core/mcp';
+import type { ProviderUIOption } from '../../../core/providers';
 import {
+  getProviderForModel,
   type ProviderCapabilities,
   type ProviderChatUIConfig,
   type ProviderId,
@@ -39,7 +41,7 @@ import {
   NavigationSidebar,
   StatusPanel,
 } from '../ui';
-import type { TabData, TabDOMElements, TabId } from './types';
+import type { TabData, TabDOMElements, TabId, TabProviderContext } from './types';
 import { generateTabId, TEXTAREA_MAX_HEIGHT_PERCENT, TEXTAREA_MIN_MAX_HEIGHT } from './types';
 
 type TabProviderSettings = Record<string, unknown> & {
@@ -49,6 +51,24 @@ type TabProviderSettings = Record<string, unknown> & {
   permissionMode: string;
   customContextLimits?: Record<string, number>;
 };
+
+/**
+ * Returns model options for a blank tab.
+ * - Codex disabled: Claude models only
+ * - Codex enabled: Claude + Codex models (grouped)
+ */
+export function getBlankTabModelOptions(
+  settings: Record<string, unknown>,
+): ProviderUIOption[] {
+  const claudeModels = ProviderRegistry.getChatUIConfig('claude').getModelOptions(settings);
+
+  if (!settings.codexEnabled) {
+    return claudeModels;
+  }
+
+  const codexModels = ProviderRegistry.getChatUIConfig('codex').getModelOptions(settings);
+  return [...claudeModels, ...codexModels];
+}
 
 export interface TabCreateOptions {
   plugin: ClaudianPlugin;
@@ -64,7 +84,7 @@ export interface TabCreateOptions {
 }
 
 function getStoredConversationProviderId(
-  tab: Pick<TabData, 'conversationId' | 'service' | 'providerId'>,
+  tab: TabProviderContext,
   plugin: ClaudianPlugin,
 ): ProviderId {
   if (tab.conversationId) {
@@ -74,11 +94,16 @@ function getStoredConversationProviderId(
     }
   }
 
-  return tab.service?.providerId ?? tab.providerId ?? plugin.settings.activeProvider as ProviderId;
+  // For blank tabs, derive provider from draft model
+  if (tab.lifecycleState === 'blank' && tab.draftModel) {
+    return getProviderForModel(tab.draftModel, plugin.settings as unknown as Record<string, unknown>);
+  }
+
+  return tab.service?.providerId ?? tab.providerId;
 }
 
 export function getTabProviderId(
-  tab: Pick<TabData, 'conversationId' | 'service' | 'providerId'>,
+  tab: TabProviderContext,
   plugin: ClaudianPlugin,
   conversation?: Conversation | null,
 ): ProviderId {
@@ -86,7 +111,7 @@ export function getTabProviderId(
 }
 
 function getTabCapabilities(
-  tab: Pick<TabData, 'conversationId' | 'service' | 'providerId'>,
+  tab: TabProviderContext,
   plugin: ClaudianPlugin,
   conversation?: Conversation | null,
 ): ProviderCapabilities {
@@ -99,7 +124,7 @@ function getTabCapabilities(
 }
 
 function getTabChatUIConfig(
-  tab: Pick<TabData, 'conversationId' | 'service' | 'providerId'>,
+  tab: TabProviderContext,
   plugin: ClaudianPlugin,
   conversation?: Conversation | null,
 ): ProviderChatUIConfig {
@@ -107,7 +132,7 @@ function getTabChatUIConfig(
 }
 
 function getTabSettingsSnapshot(
-  tab: Pick<TabData, 'conversationId' | 'service' | 'providerId'>,
+  tab: TabProviderContext,
   plugin: ClaudianPlugin,
 ): TabProviderSettings {
   return ProviderSettingsCoordinator.getProviderSettingsSnapshot(
@@ -117,7 +142,7 @@ function getTabSettingsSnapshot(
 }
 
 async function updateTabProviderSettings(
-  tab: Pick<TabData, 'conversationId' | 'service' | 'providerId'>,
+  tab: TabProviderContext,
   plugin: ClaudianPlugin,
   update: (settings: TabProviderSettings) => void,
 ): Promise<TabProviderSettings> {
@@ -180,21 +205,35 @@ function syncTabProviderServices(
   );
 }
 
-export function retargetBlankTabProvider(tab: TabData, plugin: ClaudianPlugin): void {
-  const activeProvider = plugin.settings.activeProvider as ProviderId;
-  const isBlankTab = !tab.conversationId && tab.state.messages.length === 0 && !tab.state.isStreaming;
+/**
+ * Called when Codex availability changes. If a blank tab has a Codex draft
+ * model and Codex was just disabled, falls back to Claude default model.
+ * Refreshes model selector options for all blank tabs.
+ */
+export function onCodexAvailabilityChanged(tab: TabData, plugin: ClaudianPlugin): void {
+  if (tab.lifecycleState !== 'blank') return;
 
-  if (!isBlankTab || tab.providerId === activeProvider) {
-    return;
+  const codexEnabled = !!plugin.settings.codexEnabled;
+
+  // If Codex disabled and blank tab has a Codex draft model, fall back
+  if (!codexEnabled && tab.draftModel) {
+    const settingsSnapshot = plugin.settings as unknown as Record<string, unknown>;
+    const draftProvider = getProviderForModel(tab.draftModel, settingsSnapshot);
+    if (draftProvider === 'codex') {
+      const claudeModels = ProviderRegistry.getChatUIConfig('claude')
+        .getModelOptions(settingsSnapshot);
+      tab.draftModel = claudeModels[0]?.value ?? 'haiku';
+      tab.providerId = 'claude';
+    }
   }
 
-  if (tab.service && tab.service.providerId !== activeProvider) {
+  // Clean up stale service if provider changed
+  if (tab.service && tab.draftModel && tab.service.providerId !== getProviderForModel(tab.draftModel, plugin.settings as unknown as Record<string, unknown>)) {
     tab.service.cleanup();
     tab.service = null;
     tab.serviceInitialized = false;
   }
 
-  tab.providerId = activeProvider;
   syncTabProviderServices(tab, plugin);
   tab.ui.slashCommandDropdown?.resetSdkSkillsCache();
   tab.ui.modelSelector?.setReady(false);
@@ -244,10 +283,14 @@ export function createTab(options: TabCreateOptions): TabData {
   // Create DOM structure
   const dom = buildTabDOM(contentEl);
 
+  const isBound = !!conversation?.id;
+
   // Create initial TabData (service and controllers are lazy-initialized)
   const tab: TabData = {
     id,
-    providerId: conversation?.providerId ?? plugin.settings.activeProvider as ProviderId,
+    lifecycleState: isBound ? 'bound_cold' : 'blank',
+    draftModel: isBound ? null : (plugin.settings.model as string),
+    providerId: conversation?.providerId ?? 'claude' as ProviderId,
     conversationId: conversation?.id ?? null,
     service: null,
     serviceInitialized: false,
@@ -376,17 +419,13 @@ function buildTabDOM(contentEl: HTMLElement): TabDOMElements {
 }
 
 /**
- * Initializes the tab's chat runtime (lazy initialization).
- * Call this when the tab becomes active or when the first message is sent.
+ * Initializes the tab's chat runtime for the send path.
  *
- * Session ID resolution:
- * - If tab has conversationId (existing chat) → lookup conversation's sessionId → ensureReady with it
- * - If tab has no conversationId (new chat) → ensureReady without sessionId
+ * This is the ONLY place a runtime is created. Called from:
+ * - ensureServiceInitialized() in InputController.sendMessage()
  *
- * This ensures the single source of truth (tab.conversationId) determines session behavior.
- *
- * Ensures consistent state: if initialization fails, tab.service is null
- * and tab.serviceInitialized remains false for retry.
+ * Session sync is passive (state update only). The runtime is started
+ * on demand by query() inside the send path.
  */
 export async function initializeTabService(
   tab: TabData,
@@ -394,6 +433,10 @@ export async function initializeTabService(
   mcpManager: McpServerManager,
   conversationOverride?: Conversation | null,
 ): Promise<void> {
+  if (tab.lifecycleState === 'closing') {
+    return;
+  }
+
   const conversation = conversationOverride ?? (
     tab.conversationId
       ? await plugin.getConversationById(tab.conversationId)
@@ -423,26 +466,33 @@ export async function initializeTabService(
     });
     tab.dom.eventCleanups.push(() => unsubscribeReadyState?.());
 
-    let externalContextPaths = plugin.settings.persistentExternalContextPaths || [];
+    // Passive sync: set session state without starting the runtime process.
+    // The runtime starts on demand when query() is called.
     if (conversation) {
       const hasMessages = conversation.messages.length > 0;
-      externalContextPaths = hasMessages
+      const externalContextPaths = hasMessages
         ? conversation.externalContextPaths || []
         : (plugin.settings.persistentExternalContextPaths || []);
 
       runtime.syncConversationState(conversation, externalContextPaths);
-    } else {
-      runtime.ensureReady({
-        externalContextPaths,
-      }).catch(() => {
-        // Best-effort, ignore failures
-      });
+    }
+
+    if ((tab as TabData).lifecycleState === 'closing') {
+      unsubscribeReadyState?.();
+      service?.cleanup();
+      return;
     }
 
     // Only set tab state after successful initialization
     tab.providerId = providerId;
     tab.service = service;
     tab.serviceInitialized = true;
+
+    // Update lifecycle state
+    if (tab.lifecycleState === 'blank') {
+      tab.draftModel = null;
+    }
+    tab.lifecycleState = 'bound_active';
   } catch (error) {
     // Clean up partial state on failure
     unsubscribeReadyState?.();
@@ -582,12 +632,57 @@ function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin): void {
   const { dom } = tab;
 
   const inputToolbar = dom.inputWrapper.createDiv({ cls: 'claudian-input-toolbar' });
+
+  // Blank-tab UI config wrapper that returns mixed model options
+  const blankTabUIConfigProxy = (): ProviderChatUIConfig => {
+    const draftProvider = tab.draftModel ? getProviderForModel(tab.draftModel, plugin.settings as unknown as Record<string, unknown>) : 'claude';
+    const baseConfig = ProviderRegistry.getChatUIConfig(draftProvider);
+    return {
+      ...baseConfig,
+      getModelOptions: (settings: Record<string, unknown>) =>
+        getBlankTabModelOptions(settings),
+    };
+  };
+
   const toolbarComponents = createInputToolbar(inputToolbar, {
-    getUIConfig: () => getTabChatUIConfig(tab, plugin),
+    getUIConfig: () => {
+      if (tab.lifecycleState === 'blank') {
+        return blankTabUIConfigProxy();
+      }
+      return getTabChatUIConfig(tab, plugin);
+    },
     getCapabilities: () => getTabCapabilities(tab, plugin),
     getSettings: () => getTabSettingsSnapshot(tab, plugin),
     getEnvironmentVariables: () => plugin.getActiveEnvironmentVariables(),
     onModelChange: async (model: string) => {
+      // For blank tabs, update draft model and derive provider
+      if (tab.lifecycleState === 'blank') {
+        tab.draftModel = model;
+        const newProvider = getProviderForModel(model, plugin.settings as unknown as Record<string, unknown>);
+        tab.providerId = newProvider;
+        // Update settings for the new provider
+        const uiConfig = ProviderRegistry.getChatUIConfig(newProvider);
+        await updateTabProviderSettings(tab, plugin, (settings) => {
+          settings.model = model;
+          uiConfig.applyModelDefaults(model, settings);
+        });
+        tab.ui.thinkingBudgetSelector?.updateDisplay();
+        tab.ui.modelSelector?.updateDisplay();
+        // Re-render options (provider may have changed reasoning controls)
+        tab.ui.modelSelector?.renderOptions();
+        applyProviderUIGating(tab, plugin);
+        return;
+      }
+
+      // For bound tabs, reject cross-provider model changes
+      const boundProvider = tab.providerId;
+      const modelProvider = getProviderForModel(model, plugin.settings as unknown as Record<string, unknown>);
+      if (modelProvider !== boundProvider) {
+        new Notice('Cannot switch provider on a bound session. Start a new tab instead.');
+        tab.ui.modelSelector?.updateDisplay();
+        return;
+      }
+
       const uiConfig: ProviderChatUIConfig = getTabChatUIConfig(tab, plugin);
       const providerSettings = await updateTabProviderSettings(tab, plugin, (settings) => {
         settings.model = model;
@@ -1011,15 +1106,34 @@ export function initializeTabControllers(
           ui.slashCommandDropdown?.resetSdkSkillsCache();
         }
 
-        await initializeTabService(tab, plugin, mcpManager, conversation);
-        setupServiceCallbacks(tab, plugin);
+        // Bind session state only — runtime starts on send
+        tab.conversationId = conversation?.id ?? null;
+        tab.draftModel = null;
+        tab.lifecycleState = conversation ? 'bound_cold' : 'blank';
+
+        // If the runtime already exists for the right provider, sync it passively
+        if (tab.service && tab.service.providerId === nextProviderId && conversation) {
+          const hasMessages = conversation.messages.length > 0;
+          const externalContextPaths = hasMessages
+            ? conversation.externalContextPaths || []
+            : (plugin.settings.persistentExternalContextPaths || []);
+          tab.service.syncConversationState(conversation, externalContextPaths);
+        }
+
         refreshTabProviderUI(tab, plugin);
         applyProviderUIGating(tab, plugin);
       },
     },
     {
       onNewConversation: () => {
-        retargetBlankTabProvider(tab, plugin);
+        // Reset to blank state — mark service as not initialized so
+        // ensureServiceInitialized re-runs the init path on next send
+        tab.lifecycleState = 'blank';
+        tab.draftModel = plugin.settings.model as string;
+        tab.conversationId = null;
+        tab.serviceInitialized = false;
+        refreshTabProviderUI(tab, plugin);
+        applyProviderUIGating(tab, plugin);
         ui.slashCommandDropdown?.resetSdkSkillsCache();
       },
       onConversationLoaded: () => ui.slashCommandDropdown?.resetSdkSkillsCache(),
@@ -1057,17 +1171,30 @@ export function initializeTabControllers(
     // Override to use tab's service instead of plugin.agentService
     getAgentService: () => tab.service,
     getSubagentManager: () => services.subagentManager,
+    getTabProviderId: () => getTabProviderId(tab, plugin),
     // Lazy initialization: ensure service is ready before first query
     // initializeTabService() handles session ID resolution from tab.conversationId
     ensureServiceInitialized: async () => {
-      if (tab.serviceInitialized) {
+      if (tab.serviceInitialized && tab.lifecycleState === 'bound_active') {
         return true;
       }
+
       try {
+        // For blank tabs on first send: derive provider from draft model
+        if (tab.lifecycleState === 'blank' && tab.draftModel) {
+          const derivedProvider = getProviderForModel(tab.draftModel, plugin.settings as unknown as Record<string, unknown>);
+          tab.providerId = derivedProvider;
+        }
+
         await initializeTabService(tab, plugin, mcpManager);
         setupServiceCallbacks(tab, plugin);
+
+        // Transition: lock model selector to bound provider
+        refreshTabProviderUI(tab, plugin);
+        applyProviderUIGating(tab, plugin);
         return true;
-      } catch {
+      } catch (error) {
+        new Notice(error instanceof Error ? error.message : 'Failed to initialize chat service');
         return false;
       }
     },
@@ -1264,6 +1391,9 @@ export function deactivateTab(tab: TabData): void {
  * Made async to ensure proper cleanup ordering.
  */
 export async function destroyTab(tab: TabData): Promise<void> {
+  // Transition to closing state
+  tab.lifecycleState = 'closing';
+
   // Stop polling
   tab.controllers.selectionController?.stop();
   tab.controllers.selectionController?.clear();

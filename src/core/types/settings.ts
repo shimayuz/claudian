@@ -186,8 +186,8 @@ export interface ClaudianSettings {
   loadUserClaudeSettings: boolean;
 
   // Provider selection
-  activeProvider: string;  // ProviderId — default provider for blank tabs and new conversations
-  codexEnabled: boolean;   // Whether the Codex provider is available
+  settingsProvider: string;  // ProviderId — which provider's model/effort/budget is projected to top-level fields
+  codexEnabled: boolean;     // Whether the Codex provider is available
   savedProviderModel: Partial<Record<string, string>>;
   savedProviderEffort: Partial<Record<string, string>>;
   savedProviderThinkingBudget: Partial<Record<string, string>>;

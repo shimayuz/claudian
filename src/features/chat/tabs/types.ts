@@ -168,12 +168,30 @@ export interface TabDOMElements {
 }
 
 /**
+ * Tab lifecycle states:
+ * - `blank`: No conversation binding, no runtime. Draft model selection only.
+ * - `bound_cold`: Bound to a conversation, but runtime not started yet.
+ * - `bound_active`: Bound to a conversation with a running runtime.
+ * - `closing`: Tab is being torn down.
+ */
+export type TabLifecycleState = 'blank' | 'bound_cold' | 'bound_active' | 'closing';
+
+/**
  * Represents a single tab in the multi-tab system.
  * Each tab is an independent chat session with its own runtime instance.
  */
 export interface TabData {
   /** Unique tab identifier. */
   id: TabId;
+
+  /** Explicit lifecycle state. */
+  lifecycleState: TabLifecycleState;
+
+  /**
+   * Draft model selected in a blank tab (before first send).
+   * Used to derive provider on first send. Null after binding.
+   */
+  draftModel: string | null;
 
   /** Active provider for this tab's current conversation/runtime. */
   providerId: ProviderId;
@@ -205,6 +223,8 @@ export interface TabData {
   /** Per-tab renderer. */
   renderer: MessageRenderer | null;
 }
+
+export type TabProviderContext = Pick<TabData, 'conversationId' | 'service' | 'providerId' | 'lifecycleState' | 'draftModel'>;
 
 /**
  * Persisted tab state for restoration on plugin reload.

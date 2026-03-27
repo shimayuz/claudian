@@ -8,6 +8,7 @@ import {
   isWriteEditTool,
   skipsBlockedDetection,
   TOOL_AGENT_OUTPUT,
+  TOOL_APPLY_PATCH,
   TOOL_ASK_USER_QUESTION,
   TOOL_TASK,
   TOOL_TODO_WRITE,
@@ -410,6 +411,11 @@ export class StreamController {
       // Notify Obsidian vault so the file tree refreshes after Write/Edit/NotebookEdit
       if (!chunk.isError && !isBlocked && isEditTool(existingToolCall.name)) {
         this.notifyVaultFileChange(existingToolCall.input);
+      }
+
+      // Codex apply_patch: refresh each changed file path
+      if (!chunk.isError && !isBlocked && existingToolCall.name === TOOL_APPLY_PATCH) {
+        this.notifyApplyPatchFileChanges(existingToolCall.input);
       }
     }
 
@@ -1007,6 +1013,33 @@ export class StreamController {
         vault.adapter.list(parentDir).catch(() => { /* ignore */ });
       }
     }, 200);
+  }
+
+  /** Refreshes vault for each file path in a Codex apply_patch changes array or patch text. */
+  private notifyApplyPatchFileChanges(input: Record<string, unknown>): void {
+    const notified = new Set<string>();
+
+    // Legacy changes array
+    const changes = input.changes;
+    if (Array.isArray(changes)) {
+      for (const change of changes) {
+        if (change && typeof change === 'object' && typeof change.path === 'string') {
+          notified.add(change.path);
+          this.notifyVaultFileChange({ file_path: change.path });
+        }
+      }
+    }
+
+    // Parse file paths from patch text markers (current custom_tool_call format)
+    const patchText = typeof input.patch === 'string' ? input.patch : '';
+    if (patchText) {
+      for (const match of patchText.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)) {
+        const filePath = match[1]?.trim();
+        if (filePath && !notified.has(filePath)) {
+          this.notifyVaultFileChange({ file_path: filePath });
+        }
+      }
+    }
   }
 
   /** Scrolls messages to bottom if auto-scroll is enabled. */

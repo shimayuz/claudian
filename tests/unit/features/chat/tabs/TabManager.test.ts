@@ -1049,12 +1049,7 @@ describe('TabManager - openConversation Current Tab Path', () => {
 });
 
 describe('TabManager - Service Initialization Errors', () => {
-  it('should handle initializeActiveTabService errors gracefully', async () => {
-    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-    // Make initializeTabService fail
-    mockInitializeTabService.mockRejectedValueOnce(new Error('Service init failed'));
-
+  it('should restore state without pre-warming any tabs', async () => {
     mockCreateTab.mockReturnValue(
       createMockTabData({ id: 'test-tab', serviceInitialized: false })
     );
@@ -1066,16 +1061,15 @@ describe('TabManager - Service Initialization Errors', () => {
       createMockView()
     );
 
-    // Restore state triggers initializeActiveTabService
     const persistedState: PersistedTabManagerState = {
       openTabs: [{ tabId: 'restored-tab', conversationId: null }],
       activeTabId: 'restored-tab',
     };
 
-    // Should not throw even if service init fails
-    await expect(manager.restoreState(persistedState)).resolves.not.toThrow();
+    await manager.restoreState(persistedState);
 
-    consoleSpy.mockRestore();
+    // No pre-warm: all restored tabs stay cold until send
+    expect(mockInitializeTabService).not.toHaveBeenCalled();
   });
 });
 
@@ -1144,7 +1138,7 @@ describe('TabManager - closeTab Edge Cases', () => {
     expect(manager.getTabCount()).toBe(1);
   });
 
-  it('should create new tab and initialize service when closing the last tab with conversation', async () => {
+  it('should create new blank tab (stays cold) when closing the last tab with conversation', async () => {
     const callbacks: TabManagerCallbacks = {
       onTabCreated: jest.fn(),
       onTabClosed: jest.fn(),
@@ -1167,7 +1161,8 @@ describe('TabManager - closeTab Edge Cases', () => {
     expect(result).toBe(true);
     expect(manager.getTabCount()).toBe(1); // New tab was created
     expect(mockCreateTab).toHaveBeenCalled();
-    expect(mockInitializeTabService).toHaveBeenCalled();
+    // No pre-warm: replacement blank tabs stay cold until send
+    expect(mockInitializeTabService).not.toHaveBeenCalled();
     expect(callbacks.onTabClosed).toHaveBeenCalledWith('tab-1');
   });
 });

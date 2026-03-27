@@ -8,11 +8,12 @@ import {
   createTab,
   deactivateTab,
   destroyTab,
+  getBlankTabModelOptions,
   getTabTitle,
   initializeTabControllers,
   initializeTabService,
   initializeTabUI,
-  retargetBlankTabProvider,
+  onCodexAvailabilityChanged,
   setupServiceCallbacks,
   type TabCreateOptions,
   wireTabInputEvents,
@@ -345,7 +346,7 @@ function createMockPlugin(overrides: Record<string, any> = {}): any {
         focusInputKey: 'i',
       },
       persistentExternalContextPaths: [],
-      activeProvider: 'claude',
+      settingsProvider: 'claude',
       codexEnabled: true,
       savedProviderModel: {
         claude: 'claude-sonnet-4-5',
@@ -576,7 +577,7 @@ describe('Tab - Service Initialization', () => {
       expect(tab.service).toBe(newService);
     });
 
-    it('should ensureReady without session ID (just spin up process)', async () => {
+    it('should NOT call ensureReady for blank tabs (lazy start)', async () => {
       const mockEnsureReady = jest.fn().mockResolvedValue(true);
       const runtimeModule = jest.requireMock('@/providers/claude/runtime') as { ClaudeChatRuntime: jest.Mock };
       runtimeModule.ClaudeChatRuntime.mockImplementationOnce(() => createMockClaudianService({ ensureReady: mockEnsureReady }));
@@ -586,10 +587,10 @@ describe('Tab - Service Initialization', () => {
 
       await initializeTabService(tab, options.plugin, options.mcpManager);
 
-      expect(mockEnsureReady).toHaveBeenCalledWith({
-        sessionId: undefined,
-        externalContextPaths: [],
-      });
+      // Runtime starts on demand in query(), not during initialization
+      expect(mockEnsureReady).not.toHaveBeenCalled();
+      expect(tab.serviceInitialized).toBe(true);
+      expect(tab.lifecycleState).toBe('bound_active');
     });
 
     it('should sync existing conversations with saved external contexts', async () => {
@@ -703,7 +704,7 @@ describe('Tab - Service Initialization', () => {
       expect(getCapabilitiesSpy).toHaveBeenCalledWith('codex');
     });
 
-    it('retargets blank tabs to the new active provider and clears stale runtimes', () => {
+    it('falls back blank Codex draft to Claude when Codex is disabled', () => {
       jest.spyOn(ProviderRegistry, 'createInstructionRefineService').mockReturnValue({ cancel: jest.fn() } as any);
       jest.spyOn(ProviderRegistry, 'createTitleGenerationService').mockReturnValue({ cancel: jest.fn() } as any);
       jest.spyOn(ProviderRegistry, 'getTaskResultInterpreter').mockReturnValue({} as any);
@@ -712,22 +713,25 @@ describe('Tab - Service Initialization', () => {
       const tab = createTab(createMockOptions({ plugin }));
       initializeTabUI(tab, plugin);
 
-      const staleService = createMockClaudianService({ providerId: 'claude' });
+      // Simulate blank tab with Codex draft model
+      tab.draftModel = 'gpt-5.4';
+      tab.providerId = 'codex';
+      tab.lifecycleState = 'blank';
+
+      const staleService = createMockClaudianService({ providerId: 'codex' });
       tab.service = staleService as any;
       tab.serviceInitialized = true;
 
-      plugin.settings.activeProvider = 'codex';
+      // Disable Codex
+      plugin.settings.codexEnabled = false;
 
-      retargetBlankTabProvider(tab, plugin);
+      onCodexAvailabilityChanged(tab, plugin);
 
       expect(staleService.cleanup).toHaveBeenCalled();
-      expect(tab.providerId).toBe('codex');
+      expect(tab.providerId).toBe('claude');
       expect(tab.service).toBeNull();
       expect(tab.serviceInitialized).toBe(false);
       expect(mockModelSelector.setReady).toHaveBeenCalledWith(false);
-      expect(mockMcpServerSelector.clearEnabled).toHaveBeenCalled();
-      expect(mockMcpServerSelector.setVisible).toHaveBeenLastCalledWith(false);
-      expect(mockImageContextManager.setEnabled).toHaveBeenLastCalledWith(false);
       expect(mockSlashCommandDropdown.resetSdkSkillsCache).toHaveBeenCalled();
     });
 
@@ -746,7 +750,7 @@ describe('Tab - Service Initialization', () => {
             focusInputKey: 'i',
           },
           persistentExternalContextPaths: [],
-          activeProvider: 'claude',
+          settingsProvider: 'claude',
           codexEnabled: true,
           savedProviderModel: {
             claude: 'claude-sonnet-4-5',
@@ -798,7 +802,7 @@ describe('Tab - Service Initialization', () => {
       expect(plugin.saveSettings).toHaveBeenCalled();
     });
 
-    it('retargets blank tabs when the new-conversation callback fires', () => {
+    it('resets to blank state when the new-conversation callback fires', () => {
       jest.spyOn(ProviderRegistry, 'createInstructionRefineService').mockReturnValue({ cancel: jest.fn() } as any);
       jest.spyOn(ProviderRegistry, 'createTitleGenerationService').mockReturnValue({ cancel: jest.fn() } as any);
       jest.spyOn(ProviderRegistry, 'getTaskResultInterpreter').mockReturnValue({} as any);
@@ -808,10 +812,9 @@ describe('Tab - Service Initialization', () => {
       initializeTabUI(tab, plugin);
       initializeTabControllers(tab, plugin, {} as any, createMockMcpManager());
 
-      const staleService = createMockClaudianService({ providerId: 'claude' });
-      tab.service = staleService as any;
-      tab.serviceInitialized = true;
-      plugin.settings.activeProvider = 'codex';
+      // Simulate a bound tab
+      tab.lifecycleState = 'bound_cold';
+      tab.conversationId = 'conv-1';
 
       const controllersModule = jest.requireMock('@/features/chat/controllers') as {
         ConversationController: jest.Mock;
@@ -822,9 +825,10 @@ describe('Tab - Service Initialization', () => {
 
       callback();
 
-      expect(staleService.cleanup).toHaveBeenCalled();
-      expect(tab.providerId).toBe('codex');
-      expect(tab.service).toBeNull();
+      expect(tab.lifecycleState).toBe('blank');
+      expect(tab.conversationId).toBeNull();
+      expect(tab.draftModel).toBe(plugin.settings.model);
+      expect(tab.serviceInitialized).toBe(false);
     });
   });
 });
@@ -2182,7 +2186,7 @@ describe('Tab - Controller Configuration', () => {
   });
 
   describe('InputController configuration', () => {
-    it('should wire ensureServiceInitialized to return true when already initialized', async () => {
+    it('should wire ensureServiceInitialized to return true when already initialized and bound_active', async () => {
       const { InputController } = jest.requireMock('@/features/chat/controllers');
       const options = createMockOptions();
       const tab = createTab(options);
@@ -2195,8 +2199,9 @@ describe('Tab - Controller Configuration', () => {
       const constructorCall = InputController.mock.calls[0];
       const config = constructorCall[0];
 
-      // Test ensureServiceInitialized when already initialized
+      // Test ensureServiceInitialized when already initialized and bound_active
       tab.serviceInitialized = true;
+      tab.lifecycleState = 'bound_active';
       const result = await config.ensureServiceInitialized();
       expect(result).toBe(true);
     });
@@ -2934,5 +2939,305 @@ describe('Tab - handleForkAll (via /fork command)', () => {
     const lastCall = InputController.mock.calls[InputController.mock.calls.length - 1];
     const config = lastCall[0];
     expect(config.onForkAll).toBeUndefined();
+  });
+});
+
+describe('Tab - Blank Tab Model Selector', () => {
+  it('returns Claude-only models when Codex is disabled', () => {
+    const claudeModels = [
+      { value: 'haiku', label: 'Haiku' },
+      { value: 'sonnet', label: 'Sonnet' },
+    ];
+    const codexModels = [
+      { value: 'gpt-5.4', label: 'GPT-5.4' },
+    ];
+
+    jest.spyOn(ProviderRegistry, 'getChatUIConfig').mockImplementation((providerId?: string) => ({
+      getModelOptions: () => providerId === 'codex' ? codexModels : claudeModels,
+    } as any));
+
+    const result = getBlankTabModelOptions({ codexEnabled: false });
+    expect(result).toEqual(claudeModels);
+  });
+
+  it('returns Claude + Codex models when Codex is enabled', () => {
+    const claudeModels = [
+      { value: 'haiku', label: 'Haiku' },
+      { value: 'sonnet', label: 'Sonnet' },
+    ];
+    const codexModels = [
+      { value: 'gpt-5.4', label: 'GPT-5.4' },
+    ];
+
+    jest.spyOn(ProviderRegistry, 'getChatUIConfig').mockImplementation((providerId?: string) => ({
+      getModelOptions: () => providerId === 'codex' ? codexModels : claudeModels,
+    } as any));
+
+    const result = getBlankTabModelOptions({ codexEnabled: true });
+    expect(result).toEqual([...claudeModels, ...codexModels]);
+  });
+});
+
+describe('Tab - Cross-Provider Model Rejection', () => {
+  it('rejects cross-provider model change on bound tab via toolbar onModelChange', async () => {
+    jest.spyOn(ProviderRegistry, 'createInstructionRefineService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'createTitleGenerationService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'getTaskResultInterpreter').mockReturnValue({} as any);
+
+    const plugin = createMockPlugin();
+    const tab = createTab(createMockOptions({ plugin }));
+    initializeTabUI(tab, plugin);
+
+    // Simulate bound Claude tab
+    tab.lifecycleState = 'bound_cold';
+    tab.providerId = 'claude';
+    tab.conversationId = 'conv-1';
+
+    // Get the onModelChange callback from toolbar
+    const uiModule = jest.requireMock('@/features/chat/ui') as {
+      createInputToolbar: jest.Mock;
+    };
+    const toolbarCallbacks = uiModule.createInputToolbar.mock.calls.at(-1)?.[1];
+    expect(toolbarCallbacks).toBeDefined();
+
+    // Attempt cross-provider model change (Claude -> Codex)
+    await toolbarCallbacks.onModelChange('gpt-5.4');
+
+    // Should show a Notice rejecting it
+    expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Cannot switch provider'));
+    // Provider should remain Claude
+    expect(tab.providerId).toBe('claude');
+  });
+
+  it('allows same-provider model change on bound tab', async () => {
+    (Notice as unknown as jest.Mock).mockClear();
+    jest.spyOn(ProviderRegistry, 'createInstructionRefineService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'createTitleGenerationService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'getTaskResultInterpreter').mockReturnValue({} as any);
+    jest.spyOn(ProviderRegistry, 'getChatUIConfig').mockReturnValue({
+      getModelOptions: jest.fn().mockReturnValue([]),
+      isAdaptiveReasoningModel: jest.fn().mockReturnValue(false),
+      getReasoningOptions: jest.fn().mockReturnValue([]),
+      getDefaultReasoningValue: jest.fn().mockReturnValue('off'),
+      getContextWindowSize: jest.fn().mockReturnValue(200000),
+      isDefaultModel: jest.fn().mockReturnValue(false),
+      applyModelDefaults: jest.fn(),
+      normalizeModelVariant: jest.fn((model: string) => model),
+      getCustomModelIds: jest.fn().mockReturnValue(new Set()),
+    } as any);
+
+    const plugin = createMockPlugin();
+    const tab = createTab(createMockOptions({ plugin }));
+    initializeTabUI(tab, plugin);
+
+    // Simulate bound Claude tab
+    tab.lifecycleState = 'bound_cold';
+    tab.providerId = 'claude';
+    tab.conversationId = 'conv-1';
+
+    const uiModule = jest.requireMock('@/features/chat/ui') as {
+      createInputToolbar: jest.Mock;
+    };
+    const toolbarCallbacks = uiModule.createInputToolbar.mock.calls.at(-1)?.[1];
+
+    // Same-provider model change (Claude -> Claude)
+    await toolbarCallbacks.onModelChange('opus');
+
+    expect(Notice).not.toHaveBeenCalled();
+    expect(plugin.saveSettings).toHaveBeenCalled();
+  });
+});
+
+describe('Tab - Blank Tab Draft Model Change', () => {
+  it('updates draft model and provider without creating runtime', async () => {
+    jest.spyOn(ProviderRegistry, 'createInstructionRefineService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'createTitleGenerationService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'getTaskResultInterpreter').mockReturnValue({} as any);
+    jest.spyOn(ProviderRegistry, 'getChatUIConfig').mockReturnValue({
+      getModelOptions: jest.fn().mockReturnValue([]),
+      isAdaptiveReasoningModel: jest.fn().mockReturnValue(false),
+      getReasoningOptions: jest.fn().mockReturnValue([]),
+      getDefaultReasoningValue: jest.fn().mockReturnValue('off'),
+      getContextWindowSize: jest.fn().mockReturnValue(200000),
+      isDefaultModel: jest.fn().mockReturnValue(false),
+      applyModelDefaults: jest.fn(),
+      normalizeModelVariant: jest.fn((model: string) => model),
+      getCustomModelIds: jest.fn().mockReturnValue(new Set()),
+    } as any);
+
+    const plugin = createMockPlugin();
+    const tab = createTab(createMockOptions({ plugin }));
+    initializeTabUI(tab, plugin);
+
+    expect(tab.lifecycleState).toBe('blank');
+    expect(tab.service).toBeNull();
+
+    const uiModule = jest.requireMock('@/features/chat/ui') as {
+      createInputToolbar: jest.Mock;
+    };
+    const toolbarCallbacks = uiModule.createInputToolbar.mock.calls.at(-1)?.[1];
+
+    // Switch to Codex model on blank tab
+    await toolbarCallbacks.onModelChange('gpt-5.4');
+
+    expect(tab.draftModel).toBe('gpt-5.4');
+    expect(tab.providerId).toBe('codex');
+    // No runtime should have been created
+    expect(tab.service).toBeNull();
+    expect(tab.serviceInitialized).toBe(false);
+    expect(tab.lifecycleState).toBe('blank');
+  });
+});
+
+describe('Tab - First Send Binding', () => {
+  it('derives provider from draft model on first send (Claude)', async () => {
+    const mockEnsureReady = jest.fn().mockResolvedValue(true);
+    const runtimeModule = jest.requireMock('@/providers/claude/runtime') as { ClaudeChatRuntime: jest.Mock };
+    runtimeModule.ClaudeChatRuntime.mockImplementationOnce(() => createMockClaudianService({ ensureReady: mockEnsureReady }));
+    const createChatRuntimeSpy = jest.spyOn(ProviderRegistry, 'createChatRuntime')
+      .mockReturnValue(createMockClaudianService() as any);
+
+    const plugin = createMockPlugin();
+    const tab = createTab(createMockOptions({ plugin }));
+
+    tab.draftModel = 'sonnet';
+    tab.lifecycleState = 'blank';
+
+    await initializeTabService(tab, plugin, createMockMcpManager());
+
+    expect(createChatRuntimeSpy).toHaveBeenCalledWith(expect.objectContaining({
+      providerId: 'claude',
+    }));
+    expect(tab.lifecycleState).toBe('bound_active');
+    expect(tab.draftModel).toBeNull();
+  });
+
+  it('derives provider from draft model on first send (Codex)', async () => {
+    const createChatRuntimeSpy = jest.spyOn(ProviderRegistry, 'createChatRuntime')
+      .mockReturnValue(createMockClaudianService({ providerId: 'codex' }) as any);
+
+    const plugin = createMockPlugin();
+    const tab = createTab(createMockOptions({ plugin }));
+
+    tab.draftModel = 'gpt-5.4';
+    tab.providerId = 'codex';
+    tab.lifecycleState = 'blank';
+
+    await initializeTabService(tab, plugin, createMockMcpManager());
+
+    expect(createChatRuntimeSpy).toHaveBeenCalledWith(expect.objectContaining({
+      providerId: 'codex',
+    }));
+    expect(tab.lifecycleState).toBe('bound_active');
+    expect(tab.draftModel).toBeNull();
+  });
+});
+
+describe('Tab - History Bind Without Runtime', () => {
+  it('ensureServiceForConversation binds to bound_cold without starting runtime', () => {
+    jest.spyOn(ProviderRegistry, 'createInstructionRefineService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'createTitleGenerationService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'getTaskResultInterpreter').mockReturnValue({} as any);
+
+    const plugin = createMockPlugin();
+    const tab = createTab(createMockOptions({ plugin }));
+    initializeTabUI(tab, plugin);
+    initializeTabControllers(tab, plugin, {} as any, createMockMcpManager());
+
+    const controllersModule = jest.requireMock('@/features/chat/controllers') as {
+      ConversationController: jest.Mock;
+    };
+    const deps = controllersModule.ConversationController.mock.calls.at(-1)?.[0];
+    const ensureServiceForConversation = deps?.ensureServiceForConversation;
+
+    const conversation = {
+      id: 'conv-history',
+      providerId: 'codex' as const,
+      messages: [{ id: 'msg-1', role: 'user' as const, content: 'hi', timestamp: Date.now() }],
+    };
+
+    ensureServiceForConversation(conversation);
+
+    expect(tab.lifecycleState).toBe('bound_cold');
+    expect(tab.providerId).toBe('codex');
+    expect(tab.conversationId).toBe('conv-history');
+    expect(tab.draftModel).toBeNull();
+    // No runtime created
+    expect(tab.serviceInitialized).toBe(false);
+  });
+});
+
+describe('Tab - Destroy Lifecycle Transition', () => {
+  it('transitions to closing state and cleans up runtime', async () => {
+    const mockCleanup = jest.fn();
+    const options = createMockOptions();
+    const tab = createTab(options);
+
+    tab.lifecycleState = 'bound_active';
+    tab.service = { cleanup: mockCleanup } as any;
+    tab.serviceInitialized = true;
+
+    await destroyTab(tab);
+
+    expect(tab.lifecycleState).toBe('closing');
+    expect(mockCleanup).toHaveBeenCalled();
+    expect(tab.service).toBeNull();
+  });
+
+  it('does not fail when destroying a blank tab with no runtime', async () => {
+    const options = createMockOptions();
+    const tab = createTab(options);
+
+    expect(tab.lifecycleState).toBe('blank');
+    expect(tab.service).toBeNull();
+
+    await destroyTab(tab);
+
+    expect(tab.lifecycleState).toBe('closing');
+  });
+
+  it('does not fail when destroying a bound_cold tab with no runtime', async () => {
+    const options = createMockOptions({
+      conversation: {
+        id: 'conv-1',
+        providerId: 'claude' as any,
+        title: 'Test',
+        messages: [],
+        sessionId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    });
+    const tab = createTab(options);
+
+    expect(tab.lifecycleState).toBe('bound_cold');
+    expect(tab.service).toBeNull();
+
+    await destroyTab(tab);
+
+    expect(tab.lifecycleState).toBe('closing');
+  });
+});
+
+describe('Tab - InputController getTabProviderId wiring', () => {
+  it('wires getTabProviderId to InputController deps', () => {
+    jest.spyOn(ProviderRegistry, 'createInstructionRefineService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'createTitleGenerationService').mockReturnValue({ cancel: jest.fn() } as any);
+    jest.spyOn(ProviderRegistry, 'getTaskResultInterpreter').mockReturnValue({} as any);
+
+    const plugin = createMockPlugin();
+    const tab = createTab(createMockOptions({ plugin }));
+    initializeTabUI(tab, plugin);
+    initializeTabControllers(tab, plugin, {} as any, createMockMcpManager());
+
+    const { InputController } = jest.requireMock('@/features/chat/controllers') as { InputController: jest.Mock };
+    const lastCall = InputController.mock.calls[InputController.mock.calls.length - 1];
+    const config = lastCall[0];
+    expect(config.getTabProviderId).toBeDefined();
+    expect(typeof config.getTabProviderId).toBe('function');
+
+    // For a blank tab with default model, should resolve to claude
+    const result = config.getTabProviderId();
+    expect(result).toBe('claude');
   });
 });

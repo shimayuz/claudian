@@ -5,7 +5,7 @@ import { ProviderRegistry, ProviderSettingsCoordinator } from '../../core/provid
 import { VIEW_TYPE_CLAUDIAN } from '../../core/types';
 import type ClaudianPlugin from '../../main';
 import { LOGO_SVG } from './constants';
-import { getTabProviderId, retargetBlankTabProvider, TabBar, TabManager, updatePlanModeUI } from './tabs';
+import { getTabProviderId, onCodexAvailabilityChanged, TabBar, TabManager, updatePlanModeUI } from './tabs';
 import type { TabData, TabId } from './tabs/types';
 
 export class ClaudianView extends ItemView {
@@ -81,7 +81,7 @@ export class ClaudianView extends ItemView {
   /** Refreshes model-dependent UI across all tabs (used after settings/env changes). */
   refreshModelSelector(): void {
     for (const tab of this.tabManager?.getAllTabs() ?? []) {
-      retargetBlankTabProvider(tab, this.plugin);
+      onCodexAvailabilityChanged(tab, this.plugin);
       const providerId = getTabProviderId(tab, this.plugin);
       const providerSettings = ProviderSettingsCoordinator.getProviderSettingsSnapshot(
         this.plugin.settings as unknown as Record<string, unknown>,

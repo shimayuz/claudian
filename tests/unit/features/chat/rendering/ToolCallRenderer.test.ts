@@ -358,6 +358,100 @@ describe('ToolCallRenderer', () => {
     });
   });
 
+  describe('getToolSummary - Codex native tools', () => {
+    it('returns file count for apply_patch with changes array', () => {
+      expect(getToolSummary('apply_patch', {
+        changes: [{ path: 'src/a.ts', kind: 'update' }, { path: 'src/b.ts', kind: 'add' }],
+      })).toBe('2 files');
+    });
+
+    it('returns single filename for apply_patch with one change', () => {
+      expect(getToolSummary('apply_patch', {
+        changes: [{ path: 'src/main.ts', kind: 'update' }],
+      })).toBe('main.ts');
+    });
+
+    it('extracts files from patch text markers', () => {
+      expect(getToolSummary('apply_patch', {
+        patch: '*** Update File: src/main.ts\n--- src/main.ts\n+++ src/main.ts\n@@ ...',
+      })).toBe('main.ts');
+    });
+
+    it('returns "patch" for apply_patch with unrecognized patch text', () => {
+      expect(getToolSummary('apply_patch', { patch: 'diff output here' })).toBe('patch');
+    });
+
+    it('returns empty for apply_patch with no input', () => {
+      expect(getToolSummary('apply_patch', {})).toBe('');
+    });
+
+    it('returns session id for write_stdin', () => {
+      expect(getToolSummary('write_stdin', { session_id: 'sess_1', chars: 'y\n' })).toBe('#sess_1 y\\n');
+    });
+
+    it('returns chars preview for write_stdin without session', () => {
+      expect(getToolSummary('write_stdin', { chars: 'y\n' })).toBe('y\\n');
+    });
+
+    it('returns empty for write_stdin with no input', () => {
+      expect(getToolSummary('write_stdin', {})).toBe('');
+    });
+
+    it('returns message preview for spawn_agent', () => {
+      expect(getToolSummary('spawn_agent', { message: 'Update imports' })).toBe('Update imports');
+    });
+
+    it('truncates long spawn_agent messages', () => {
+      const longMsg = 'a'.repeat(60);
+      expect(getToolSummary('spawn_agent', { message: longMsg })).toBe('a'.repeat(50) + '...');
+    });
+
+    it('returns agent count and timeout for wait', () => {
+      expect(getToolSummary('wait', { ids: ['a1'], timeout_ms: 30000 })).toBe('1 agent, 30s');
+    });
+
+    it('returns message preview for send_input', () => {
+      expect(getToolSummary('send_input', { message: 'Also update exports.' })).toBe('Also update exports.');
+    });
+
+    it('returns empty for resume_agent and close_agent', () => {
+      expect(getToolSummary('resume_agent', {})).toBe('');
+      expect(getToolSummary('close_agent', {})).toBe('');
+    });
+  });
+
+  describe('getToolLabel - Codex native tools', () => {
+    it('labels apply_patch with summary', () => {
+      expect(getToolLabel('apply_patch', {
+        changes: [{ path: 'src/foo.ts', kind: 'update' }],
+      })).toBe('apply_patch: foo.ts');
+    });
+
+    it('labels apply_patch without changes', () => {
+      expect(getToolLabel('apply_patch', {})).toBe('apply_patch');
+    });
+
+    it('labels write_stdin with summary', () => {
+      expect(getToolLabel('write_stdin', { session_id: 's1' })).toBe('write_stdin: #s1');
+    });
+
+    it('labels write_stdin without input', () => {
+      expect(getToolLabel('write_stdin', {})).toBe('write_stdin');
+    });
+
+    it('labels spawn_agent with message', () => {
+      expect(getToolLabel('spawn_agent', { message: 'Fix bug' })).toBe('spawn_agent: Fix bug');
+    });
+
+    it('labels wait with count', () => {
+      expect(getToolLabel('wait', { ids: ['a1', 'a2'], timeout_ms: 5000 })).toBe('wait: 2 agents, 5s');
+    });
+
+    it('returns raw name for lifecycle tools with no summary', () => {
+      expect(getToolLabel('close_agent', {})).toBe('close_agent');
+    });
+  });
+
   describe('isBlockedToolResult', () => {
     it.each([
       'Blocked by blocklist: /etc/passwd',

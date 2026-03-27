@@ -1,6 +1,8 @@
 import {
+  type ApprovalMode,
   Codex,
   type ModelReasoningEffort,
+  type SandboxMode,
   type ThreadEvent,
   type ThreadOptions,
 } from '@openai/codex-sdk';
@@ -27,6 +29,13 @@ import { getEnhancedPath, parseEnvironmentVariables } from '../../../utils/env';
 import { getVaultPath } from '../../../utils/path';
 import { CODEX_PROVIDER_CAPABILITIES } from '../capabilities';
 import { findCodexSessionFile } from '../history/CodexHistoryStore';
+import {
+  isCodexToolOutputError,
+  normalizeCodexToolInput,
+  normalizeCodexToolName,
+  normalizeCodexToolResult,
+  parseCodexArguments,
+} from '../normalization';
 import { encodeCodexTurn } from '../prompt/encodeCodexTurn';
 import { type CodexProviderState, getCodexState } from '../types';
 import { findCodexBinaryPath } from './CodexBinaryLocator';
@@ -38,6 +47,12 @@ const EFFORT_MAP: Record<string, ModelReasoningEffort> = {
   low: 'low',
   medium: 'medium',
   high: 'high',
+  xhigh: 'xhigh',
+};
+
+const PERMISSION_MODE_MAP: Record<string, { approvalPolicy: ApprovalMode; sandboxMode: SandboxMode }> = {
+  yolo: { approvalPolicy: 'never', sandboxMode: 'danger-full-access' },
+  normal: { approvalPolicy: 'on-request', sandboxMode: 'workspace-write' },
 };
 
 export class CodexChatRuntime implements ChatRuntime {
@@ -50,6 +65,8 @@ export class CodexChatRuntime implements ChatRuntime {
   private ready = false;
   private readyListeners = new Set<(ready: boolean) => void>();
   private lastTextPositions = new Map<string, number>();
+  private emittedToolUseIds = new Set<string>();
+  private emittedToolNames = new Map<string, string>();
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
   private approvalCallback: ApprovalCallback | null = null;
@@ -153,6 +170,8 @@ export class CodexChatRuntime implements ChatRuntime {
 
     this.abortController = new AbortController();
     this.lastTextPositions.clear();
+    this.emittedToolUseIds.clear();
+    this.emittedToolNames.clear();
 
     const externalContextPaths = turn.request.externalContextPaths ?? queryOptions?.externalContextPaths;
     const threadOptions = this.buildThreadOptions(queryOptions, externalContextPaths);
@@ -306,13 +325,15 @@ export class CodexChatRuntime implements ChatRuntime {
     );
     const model = queryOptions?.model ?? providerSettings.model as string;
     const effort = EFFORT_MAP[providerSettings.effortLevel as string] ?? 'medium';
+    const permissionMode = PERMISSION_MODE_MAP[providerSettings.permissionMode as string]
+      ?? PERMISSION_MODE_MAP.normal;
 
     return {
       model,
       workingDirectory: vaultPath ?? undefined,
-      sandboxMode: 'workspace-write',
+      sandboxMode: permissionMode.sandboxMode,
       modelReasoningEffort: effort,
-      approvalPolicy: 'never',
+      approvalPolicy: permissionMode.approvalPolicy,
       skipGitRepoCheck: true,
       additionalDirectories,
     };
@@ -387,19 +408,21 @@ export class CodexChatRuntime implements ChatRuntime {
         this.emitTextDelta(itemId, item.text as string | undefined, 'thinking', chunks);
         break;
 
+      // Legacy item types
       case 'command_execution':
         if (event.type === 'item.started') {
           chunks.push({
             type: 'tool_use',
             id: itemId,
-            name: 'Bash',
-            input: { command: item.command ?? '' },
+            name: normalizeCodexToolName(itemType),
+            input: normalizeCodexToolInput(itemType, { command: item.command ?? '' }),
           });
         } else if (event.type === 'item.completed') {
+          const rawOutput = (item.aggregated_output as string) ?? '';
           chunks.push({
             type: 'tool_result',
             id: itemId,
-            content: (item.aggregated_output as string) ?? '',
+            content: normalizeCodexToolResult('Bash', rawOutput),
             isError: (item.exit_code as number | undefined) !== 0 &&
               (item.exit_code as number | undefined) !== undefined,
           });
@@ -432,8 +455,8 @@ export class CodexChatRuntime implements ChatRuntime {
           chunks.push({
             type: 'tool_use',
             id: itemId,
-            name: 'WebSearch',
-            input: { query: item.query ?? '' },
+            name: normalizeCodexToolName(itemType),
+            input: normalizeCodexToolInput(itemType, { query: item.query ?? '' }),
           });
         } else if (event.type === 'item.completed') {
           chunks.push({
@@ -473,6 +496,55 @@ export class CodexChatRuntime implements ChatRuntime {
         }
         break;
 
+      // Current-format response_item tool types (function_call, custom_tool_call, etc.)
+      case 'function_call':
+      case 'custom_tool_call': {
+        const rawName = (item.name as string) ?? undefined;
+        this.emitToolUseIfNew(itemId, rawName, item, chunks);
+        if (event.type === 'item.completed') {
+          const rawOutput = (item.output as string) ?? '';
+          const normalizedName = normalizeCodexToolName(rawName);
+          chunks.push({
+            type: 'tool_result',
+            id: itemId,
+            content: normalizeCodexToolResult(normalizedName, rawOutput),
+            isError: isCodexToolOutputError(rawOutput),
+          });
+        }
+        break;
+      }
+
+      case 'function_call_output':
+      case 'custom_tool_call_output': {
+        const callId = (item.call_id as string) ?? itemId;
+        const rawOutput = (item.output as string) ?? '';
+        const normalizedName = this.resolveToolNameForCallId(callId);
+        chunks.push({
+          type: 'tool_result',
+          id: callId,
+          content: normalizeCodexToolResult(normalizedName, rawOutput),
+          isError: isCodexToolOutputError(rawOutput),
+        });
+        break;
+      }
+
+      case 'web_search_call': {
+        this.emitToolUseIfNewWithInput(
+          itemId,
+          'WebSearch',
+          normalizeCodexToolInput('web_search_call', { action: item.action ?? {} }),
+          chunks,
+        );
+        if (event.type === 'item.completed') {
+          chunks.push({
+            type: 'tool_result',
+            id: itemId,
+            content: 'Search complete',
+          });
+        }
+        break;
+      }
+
       case 'todo_list':
         // Todo lists are informational; no StreamChunk mapping needed
         break;
@@ -488,6 +560,42 @@ export class CodexChatRuntime implements ChatRuntime {
         // Gracefully ignore unknown item types
         break;
     }
+  }
+
+  private resolveToolNameForCallId(callId: string): string {
+    return this.emittedToolNames.get(callId) ?? 'tool';
+  }
+
+  private emitToolUseIfNew(
+    itemId: string,
+    rawName: string | undefined,
+    item: Record<string, unknown>,
+    chunks: StreamChunk[],
+  ): void {
+    if (this.emittedToolUseIds.has(itemId)) return;
+    this.emittedToolUseIds.add(itemId);
+    const rawArgs = (item.arguments as string) ?? (item.input as string) ?? undefined;
+    const parsedArgs = parseCodexArguments(rawArgs);
+    const normalizedName = normalizeCodexToolName(rawName);
+    this.emittedToolNames.set(itemId, normalizedName);
+    chunks.push({
+      type: 'tool_use',
+      id: itemId,
+      name: normalizedName,
+      input: normalizeCodexToolInput(rawName, parsedArgs),
+    });
+  }
+
+  private emitToolUseIfNewWithInput(
+    itemId: string,
+    name: string,
+    input: Record<string, unknown>,
+    chunks: StreamChunk[],
+  ): void {
+    if (this.emittedToolUseIds.has(itemId)) return;
+    this.emittedToolUseIds.add(itemId);
+    this.emittedToolNames.set(itemId, name);
+    chunks.push({ type: 'tool_use', id: itemId, name, input });
   }
 
   private emitTextDelta(

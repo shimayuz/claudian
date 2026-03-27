@@ -26,6 +26,27 @@ export const TOOL_WRITE = 'Write' as const;
 export const TOOL_ENTER_PLAN_MODE = 'EnterPlanMode' as const;
 export const TOOL_EXIT_PLAN_MODE = 'ExitPlanMode' as const;
 
+// Codex-native tools (not mapped to Claude equivalents)
+export const TOOL_APPLY_PATCH = 'apply_patch' as const;
+export const TOOL_WRITE_STDIN = 'write_stdin' as const;
+export const TOOL_CODEX_SPAWN_AGENT = 'spawn_agent' as const;
+export const TOOL_CODEX_SEND_INPUT = 'send_input' as const;
+export const TOOL_CODEX_WAIT = 'wait' as const;
+export const TOOL_CODEX_RESUME_AGENT = 'resume_agent' as const;
+export const TOOL_CODEX_CLOSE_AGENT = 'close_agent' as const;
+
+export const CODEX_AGENT_LIFECYCLE_TOOLS = [
+  TOOL_CODEX_SPAWN_AGENT,
+  TOOL_CODEX_SEND_INPUT,
+  TOOL_CODEX_WAIT,
+  TOOL_CODEX_RESUME_AGENT,
+  TOOL_CODEX_CLOSE_AGENT,
+] as const;
+
+export function isCodexAgentLifecycleTool(name: string): boolean {
+  return (CODEX_AGENT_LIFECYCLE_TOOLS as readonly string[]).includes(name);
+}
+
 // These tools resolve via dedicated callbacks (not content-based), so their
 // tool_result should never be marked "blocked" based on result text.
 export const TOOLS_SKIP_BLOCKED_DETECTION = [

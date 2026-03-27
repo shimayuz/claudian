@@ -15,8 +15,8 @@ const PROJECTION_KEYS = new Set([
 
 type ProviderProjectionMap = Partial<Record<string, string>>;
 
-function getActiveProviderId(settings: Record<string, unknown>): ProviderId {
-  return settings.activeProvider === 'codex' && settings.codexEnabled !== false
+function getSettingsProviderId(settings: Record<string, unknown>): ProviderId {
+  return settings.settingsProvider === 'codex' && settings.codexEnabled !== false
     ? 'codex'
     : 'claude';
 }
@@ -58,16 +58,24 @@ function mergeProviderSettings(
 
 export class ProviderSettingsCoordinator {
   static normalizeProviderSelection(settings: Record<string, unknown>): boolean {
-    const activeProvider = settings.activeProvider;
-    const nextProvider = activeProvider === 'codex' && settings.codexEnabled !== false
+    // Migrate legacy field name
+    let migrated = false;
+    if ('activeProvider' in settings) {
+      settings.settingsProvider = settings.activeProvider;
+      delete settings.activeProvider;
+      migrated = true;
+    }
+
+    const current = settings.settingsProvider;
+    const next = current === 'codex' && settings.codexEnabled !== false
       ? 'codex'
       : 'claude';
 
-    if (settings.activeProvider === nextProvider) {
-      return false;
+    if (settings.settingsProvider === next) {
+      return migrated;
     }
 
-    settings.activeProvider = nextProvider;
+    settings.settingsProvider = next;
     return true;
   }
 
@@ -87,7 +95,7 @@ export class ProviderSettingsCoordinator {
   ): void {
     this.persistProjectedProviderState(snapshot, providerId);
 
-    if (providerId === getActiveProviderId(settings)) {
+    if (providerId === getSettingsProviderId(settings)) {
       Object.assign(settings, snapshot);
       return;
     }
@@ -97,7 +105,7 @@ export class ProviderSettingsCoordinator {
 
   static persistProjectedProviderState(
     settings: Record<string, unknown>,
-    providerId: ProviderId = getActiveProviderId(settings),
+    providerId: ProviderId = getSettingsProviderId(settings),
   ): void {
     const savedModel = ensureProjectionMap(settings, 'savedProviderModel');
     const savedEffort = ensureProjectionMap(settings, 'savedProviderEffort');
@@ -127,7 +135,7 @@ export class ProviderSettingsCoordinator {
     const currentEffort = typeof settings.effortLevel === 'string' ? settings.effortLevel : undefined;
     const currentBudget = typeof settings.thinkingBudget === 'string' ? settings.thinkingBudget : undefined;
     const modelOptions = uiConfig.getModelOptions(settings);
-    const shouldPreferCurrentProjection = providerId === getActiveProviderId(settings);
+    const shouldPreferCurrentProjection = providerId === getSettingsProviderId(settings);
     const isDefaultModelOfAnotherProvider = currentModel.length > 0
       && ProviderRegistry.getRegisteredProviderIds()
         .filter(id => id !== providerId)
@@ -180,16 +188,16 @@ export class ProviderSettingsCoordinator {
   ): SettingsReconciliationResult {
     let anyChanged = false;
     const allInvalidated: Conversation[] = [];
-    const activeProvider = getActiveProviderId(settings);
+    const settingsProvider = getSettingsProviderId(settings);
 
     for (const providerId of ProviderRegistry.getRegisteredProviderIds()) {
       const reconciler = ProviderRegistry.getSettingsReconciler(providerId);
       const providerConversations = conversations.filter(c => c.providerId === providerId);
-      const targetSettings = providerId === activeProvider
+      const targetSettings = providerId === settingsProvider
         ? settings
         : cloneProviderSettings(settings);
 
-      if (providerId !== activeProvider) {
+      if (providerId !== settingsProvider) {
         this.projectProviderState(targetSettings, providerId);
       }
 
@@ -202,7 +210,7 @@ export class ProviderSettingsCoordinator {
       if (changed) anyChanged = true;
       if (changed) {
         this.persistProjectedProviderState(targetSettings, providerId);
-        if (providerId !== activeProvider) {
+        if (providerId !== settingsProvider) {
           mergeProviderSettings(settings, targetSettings);
         }
       }
@@ -217,15 +225,15 @@ export class ProviderSettingsCoordinator {
    */
   static normalizeAllModelVariants(settings: Record<string, unknown>): boolean {
     let anyChanged = false;
-    const activeProvider = getActiveProviderId(settings);
+    const settingsProvider = getSettingsProviderId(settings);
 
     for (const providerId of ProviderRegistry.getRegisteredProviderIds()) {
       const reconciler = ProviderRegistry.getSettingsReconciler(providerId);
-      const targetSettings = providerId === activeProvider
+      const targetSettings = providerId === settingsProvider
         ? settings
         : cloneProviderSettings(settings);
 
-      if (providerId !== activeProvider) {
+      if (providerId !== settingsProvider) {
         this.projectProviderState(targetSettings, providerId);
       }
 
@@ -233,7 +241,7 @@ export class ProviderSettingsCoordinator {
       if (changed) {
         anyChanged = true;
         this.persistProjectedProviderState(targetSettings, providerId);
-        if (providerId !== activeProvider) {
+        if (providerId !== settingsProvider) {
           mergeProviderSettings(settings, targetSettings);
         }
       }
@@ -242,10 +250,10 @@ export class ProviderSettingsCoordinator {
   }
 
   /**
-   * Project the active provider's saved values into the top-level
+   * Project the settings provider's saved values into the top-level
    * model/effortLevel/thinkingBudget fields.
    */
   static projectActiveProviderState(settings: Record<string, unknown>): void {
-    this.projectProviderState(settings, getActiveProviderId(settings));
+    this.projectProviderState(settings, getSettingsProviderId(settings));
   }
 }
