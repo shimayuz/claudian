@@ -4,10 +4,8 @@ describe('CodexChatUIConfig', () => {
   describe('getModelOptions', () => {
     it('should return default models when no env vars', () => {
       const options = codexChatUIConfig.getModelOptions({});
-      expect(options.length).toBeGreaterThanOrEqual(3);
-      expect(options.map(o => o.value)).toContain('codex-mini');
-      expect(options.map(o => o.value)).toContain('gpt-4.1');
-      expect(options.map(o => o.value)).toContain('o4-mini');
+      expect(options).toHaveLength(1);
+      expect(options.map(o => o.value)).toContain('gpt-5.4');
     });
 
     it('should prepend custom model from OPENAI_MODEL env var', () => {
@@ -16,29 +14,27 @@ describe('CodexChatUIConfig', () => {
       });
       expect(options[0].value).toBe('my-custom-model');
       expect(options[0].description).toBe('Custom (env)');
-      expect(options.length).toBe(4);
+      expect(options.length).toBe(2);
     });
 
     it('should not duplicate when OPENAI_MODEL matches a default model', () => {
       const options = codexChatUIConfig.getModelOptions({
-        environmentVariables: 'OPENAI_MODEL=codex-mini',
+        environmentVariables: 'OPENAI_MODEL=gpt-5.4',
       });
-      expect(options.length).toBe(3);
+      expect(options.length).toBe(1);
     });
   });
 
   describe('isAdaptiveReasoningModel', () => {
     it('should return true for all models', () => {
-      expect(codexChatUIConfig.isAdaptiveReasoningModel('codex-mini')).toBe(true);
-      expect(codexChatUIConfig.isAdaptiveReasoningModel('gpt-4.1')).toBe(true);
-      expect(codexChatUIConfig.isAdaptiveReasoningModel('o4-mini')).toBe(true);
+      expect(codexChatUIConfig.isAdaptiveReasoningModel('gpt-5.4')).toBe(true);
       expect(codexChatUIConfig.isAdaptiveReasoningModel('unknown-model')).toBe(true);
     });
   });
 
   describe('getReasoningOptions', () => {
     it('should return effort levels', () => {
-      const options = codexChatUIConfig.getReasoningOptions('codex-mini');
+      const options = codexChatUIConfig.getReasoningOptions('gpt-5.4');
       expect(options).toHaveLength(3);
       expect(options.map(o => o.value)).toEqual(['low', 'medium', 'high']);
     });
@@ -46,23 +42,19 @@ describe('CodexChatUIConfig', () => {
 
   describe('getDefaultReasoningValue', () => {
     it('should return medium for all models', () => {
-      expect(codexChatUIConfig.getDefaultReasoningValue('codex-mini')).toBe('medium');
-      expect(codexChatUIConfig.getDefaultReasoningValue('gpt-4.1')).toBe('medium');
+      expect(codexChatUIConfig.getDefaultReasoningValue('gpt-5.4')).toBe('medium');
     });
   });
 
   describe('getContextWindowSize', () => {
     it('should return 200000 for all models', () => {
-      expect(codexChatUIConfig.getContextWindowSize('codex-mini')).toBe(200_000);
-      expect(codexChatUIConfig.getContextWindowSize('gpt-4.1')).toBe(200_000);
+      expect(codexChatUIConfig.getContextWindowSize('gpt-5.4')).toBe(200_000);
     });
   });
 
   describe('isDefaultModel', () => {
     it('should return true for built-in models', () => {
-      expect(codexChatUIConfig.isDefaultModel('codex-mini')).toBe(true);
-      expect(codexChatUIConfig.isDefaultModel('gpt-4.1')).toBe(true);
-      expect(codexChatUIConfig.isDefaultModel('o4-mini')).toBe(true);
+      expect(codexChatUIConfig.isDefaultModel('gpt-5.4')).toBe(true);
     });
 
     it('should return false for custom models', () => {
@@ -72,7 +64,7 @@ describe('CodexChatUIConfig', () => {
 
   describe('normalizeModelVariant', () => {
     it('should return model as-is', () => {
-      expect(codexChatUIConfig.normalizeModelVariant('codex-mini', {})).toBe('codex-mini');
+      expect(codexChatUIConfig.normalizeModelVariant('gpt-5.4', {})).toBe('gpt-5.4');
       expect(codexChatUIConfig.normalizeModelVariant('custom', {})).toBe('custom');
     });
   });
@@ -84,7 +76,7 @@ describe('CodexChatUIConfig', () => {
     });
 
     it('should not include default models', () => {
-      const ids = codexChatUIConfig.getCustomModelIds({ OPENAI_MODEL: 'codex-mini' });
+      const ids = codexChatUIConfig.getCustomModelIds({ OPENAI_MODEL: 'gpt-5.4' });
       expect(ids.size).toBe(0);
     });
 

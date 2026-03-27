@@ -46,7 +46,7 @@ export const codexSettingsReconciler: ProviderSettingsReconciler = {
       && settings.model.length > 0
       && !codexChatUIConfig.isDefaultModel(settings.model)
     ) {
-      settings.model = codexChatUIConfig.getModelOptions({})[0]?.value ?? 'codex-mini';
+      settings.model = codexChatUIConfig.getModelOptions({})[0]?.value ?? 'gpt-5.4';
     }
 
     settings.lastCodexEnvHash = currentHash;

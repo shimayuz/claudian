@@ -22,10 +22,21 @@ jest.mock('@/utils/path', () => ({
   getVaultPath: jest.fn().mockReturnValue('/test/vault'),
 }));
 
+jest.mock('@/utils/env', () => ({
+  parseEnvironmentVariables: jest.requireActual('@/utils/env').parseEnvironmentVariables,
+  getEnhancedPath: jest.fn().mockReturnValue('/usr/bin:/usr/local/bin'),
+}));
+
+const mockFindCodexBinaryPath = jest.fn();
+
+jest.mock('@/providers/codex/runtime/CodexBinaryLocator', () => ({
+  findCodexBinaryPath: (...args: unknown[]) => mockFindCodexBinaryPath(...args),
+}));
+
 function createMockPlugin(): any {
   return {
     settings: {
-      model: 'codex-mini',
+      model: 'gpt-5.4',
       effortLevel: 'medium',
     },
     getActiveEnvironmentVariables: jest.fn().mockReturnValue(
@@ -68,6 +79,8 @@ describe('CodexChatRuntime', () => {
 
   beforeEach(() => {
     resetCodexSdkMocks();
+    mockFindCodexBinaryPath.mockReset();
+    mockFindCodexBinaryPath.mockReturnValue('/test/.codex-vendor/codex');
     runtime = new CodexChatRuntime(createMockPlugin());
   });
 
@@ -94,6 +107,18 @@ describe('CodexChatRuntime', () => {
         OPENAI_API_KEY: 'test-key',
         OPENAI_BASE_URL: 'https://example.test/v1',
       }),
+    }));
+  });
+
+  it('passes the resolved Codex binary path to the Codex client', async () => {
+    await runtime.ensureReady();
+
+    expect(mockFindCodexBinaryPath).toHaveBeenCalledWith(
+      expect.any(String),
+      undefined,
+    );
+    expect(mockCodexConstructor).toHaveBeenCalledWith(expect.objectContaining({
+      codexPathOverride: '/test/.codex-vendor/codex',
     }));
   });
 

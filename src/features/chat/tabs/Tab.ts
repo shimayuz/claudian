@@ -162,6 +162,9 @@ function applyProviderUIGating(tab: TabData, plugin: ClaudianPlugin): void {
 
   // Image attachments are Claude-only
   tab.ui.imageContextManager?.setEnabled(isClaude);
+
+  // Context gauge is Claude-only for now
+  tab.ui.contextUsageMeter?.setVisible(isClaude);
 }
 
 function syncTabProviderServices(
@@ -720,7 +723,11 @@ export function initializeTabUI(
   // Update ChatState callbacks for UI updates
   state.callbacks = {
     ...state.callbacks,
-    onUsageChanged: (usage) => tab.ui.contextUsageMeter?.update(usage),
+    onUsageChanged: (usage) => {
+      if (getTabCapabilities(tab, plugin).providerId === 'claude') {
+        tab.ui.contextUsageMeter?.update(usage);
+      }
+    },
     onTodosChanged: (todos) => tab.ui.statusPanel?.updateTodos(todos),
     onAutoScrollChanged: () => tab.ui.navigationSidebar?.updateVisibility(),
   };

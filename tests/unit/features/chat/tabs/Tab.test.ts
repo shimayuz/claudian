@@ -137,6 +137,7 @@ const createMockThinkingBudgetSelector = () => ({
 
 const createMockContextUsageMeter = () => ({
   update: jest.fn(),
+  setVisible: jest.fn(),
 });
 
 const createMockExternalContextSelector = () => ({
@@ -749,7 +750,7 @@ describe('Tab - Service Initialization', () => {
           codexEnabled: true,
           savedProviderModel: {
             claude: 'claude-sonnet-4-5',
-            codex: 'gpt-4.1',
+            codex: 'gpt-5.4',
           },
           savedProviderEffort: {
             claude: 'high',
@@ -783,16 +784,16 @@ describe('Tab - Service Initialization', () => {
       const toolbarCallbacks = uiModule.createInputToolbar.mock.calls.at(-1)?.[1];
 
       expect(toolbarCallbacks.getSettings()).toEqual(expect.objectContaining({
-        model: 'gpt-4.1',
+        model: 'gpt-5.4',
         effortLevel: 'medium',
       }));
 
-      await toolbarCallbacks.onModelChange('o4-mini');
+      await toolbarCallbacks.onModelChange('gpt-5.4');
 
       expect(plugin.settings.model).toBe('claude-sonnet-4-5');
       expect(plugin.settings.savedProviderModel).toEqual(expect.objectContaining({
         claude: 'claude-sonnet-4-5',
-        codex: 'o4-mini',
+        codex: 'gpt-5.4',
       }));
       expect(plugin.saveSettings).toHaveBeenCalled();
     });

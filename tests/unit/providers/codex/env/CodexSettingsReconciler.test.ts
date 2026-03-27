@@ -14,20 +14,20 @@ describe('codexSettingsReconciler', () => {
     } as unknown as Conversation;
 
     const settings: Record<string, unknown> = {
-      model: 'codex-mini',
+      model: 'gpt-5.4',
       lastCodexEnvHash: '',
     };
 
     const result = codexSettingsReconciler.reconcileModelWithEnvironment(
       settings,
       [conversation],
-      'OPENAI_MODEL=gpt-4.1',
+      'OPENAI_MODEL=gpt-5.4',
     );
 
     expect(result.changed).toBe(true);
     expect(conversation.sessionId).toBeNull();
     expect(conversation.providerState).toBeUndefined();
-    expect(settings.model).toBe('gpt-4.1');
+    expect(settings.model).toBe('gpt-5.4');
   });
 
   it('restores a built-in model when OPENAI_MODEL is removed', () => {
@@ -43,7 +43,7 @@ describe('codexSettingsReconciler', () => {
     );
 
     expect(result.changed).toBe(true);
-    expect(settings.model).toBe('codex-mini');
+    expect(settings.model).toBe('gpt-5.4');
     expect(settings.lastCodexEnvHash).toBe('');
   });
 });

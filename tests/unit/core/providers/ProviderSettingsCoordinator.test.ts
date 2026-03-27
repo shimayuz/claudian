@@ -80,14 +80,14 @@ describe('ProviderSettingsCoordinator', () => {
         model: 'haiku',
         effortLevel: 'high',
         thinkingBudget: 'off',
-        savedProviderModel: { codex: 'codex-mini', claude: 'haiku' },
+        savedProviderModel: { codex: 'gpt-5.4', claude: 'haiku' },
         savedProviderEffort: { codex: 'medium', claude: 'high' },
         savedProviderThinkingBudget: { codex: '1024', claude: 'off' },
       };
 
       ProviderSettingsCoordinator.projectActiveProviderState(settings);
 
-      expect(settings.model).toBe('codex-mini');
+      expect(settings.model).toBe('gpt-5.4');
       expect(settings.effortLevel).toBe('medium');
       expect(settings.thinkingBudget).toBe('1024');
     });
@@ -146,7 +146,7 @@ describe('ProviderSettingsCoordinator', () => {
     it('stores the current top-level projection for the active provider', () => {
       const settings: Record<string, unknown> = {
         activeProvider: 'codex',
-        model: 'gpt-4.1',
+        model: 'gpt-5.4',
         effortLevel: 'low',
         thinkingBudget: 'off',
         savedProviderModel: { claude: 'haiku' },
@@ -158,7 +158,7 @@ describe('ProviderSettingsCoordinator', () => {
 
       expect(settings.savedProviderModel).toEqual({
         claude: 'haiku',
-        codex: 'gpt-4.1',
+        codex: 'gpt-5.4',
       });
       expect(settings.savedProviderEffort).toEqual({
         claude: 'high',
@@ -182,7 +182,7 @@ describe('ProviderSettingsCoordinator', () => {
 
       ProviderSettingsCoordinator.projectProviderState(settings, 'codex');
 
-      expect(settings.model).toBe('codex-mini');
+      expect(settings.model).toBe('gpt-5.4');
       expect(settings.effortLevel).toBe('medium');
     });
   });
@@ -200,7 +200,7 @@ describe('ProviderSettingsCoordinator', () => {
         model: 'haiku',
         effortLevel: 'high',
         thinkingBudget: 'off',
-        savedProviderModel: { claude: 'haiku', codex: 'codex-mini' },
+        savedProviderModel: { claude: 'haiku', codex: 'gpt-5.4' },
         savedProviderEffort: { claude: 'high', codex: 'medium' },
         savedProviderThinkingBudget: { claude: 'off', codex: 'off' },
       };
@@ -208,7 +208,7 @@ describe('ProviderSettingsCoordinator', () => {
       const result = ProviderSettingsCoordinator.reconcileAllProviders(
         settings,
         [codexConv],
-        'OPENAI_MODEL=gpt-4.1',
+        'OPENAI_MODEL=gpt-5.4',
       );
 
       expect(result.changed).toBe(true);
@@ -217,7 +217,7 @@ describe('ProviderSettingsCoordinator', () => {
       expect(settings.model).toBe('haiku');
       expect(settings.savedProviderModel).toEqual({
         claude: 'haiku',
-        codex: 'gpt-4.1',
+        codex: 'gpt-5.4',
       });
     });
   });

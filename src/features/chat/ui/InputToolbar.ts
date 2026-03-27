@@ -898,6 +898,10 @@ export class ContextUsageMeter {
     this.container.style.display = 'none';
   }
 
+  setVisible(visible: boolean): void {
+    this.container.style.display = visible ? '' : 'none';
+  }
+
   private render() {
     const size = 16;
     const strokeWidth = 2;

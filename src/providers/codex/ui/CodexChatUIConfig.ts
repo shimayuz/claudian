@@ -6,9 +6,7 @@ import type {
 import { parseEnvironmentVariables } from '../../../utils/env';
 
 const CODEX_MODELS: ProviderUIOption[] = [
-  { value: 'codex-mini', label: 'Codex Mini', description: 'Fast, lightweight' },
-  { value: 'gpt-4.1', label: 'GPT-4.1', description: 'Balanced' },
-  { value: 'o4-mini', label: 'o4-mini', description: 'Reasoning' },
+  { value: 'gpt-5.4', label: 'GPT-5.4', description: 'Latest' },
 ];
 
 const CODEX_MODEL_SET = new Set(CODEX_MODELS.map(m => m.value));

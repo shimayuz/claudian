@@ -23,12 +23,13 @@ import type {
 } from '../../../core/runtime';
 import type { ChatMessage, Conversation, SlashCommand, StreamChunk, UsageInfo } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
-import { parseEnvironmentVariables } from '../../../utils/env';
+import { getEnhancedPath, parseEnvironmentVariables } from '../../../utils/env';
 import { getVaultPath } from '../../../utils/path';
 import { CODEX_PROVIDER_CAPABILITIES } from '../capabilities';
 import { findCodexSessionFile } from '../history/CodexHistoryStore';
 import { encodeCodexTurn } from '../prompt/encodeCodexTurn';
 import { type CodexProviderState, getCodexState } from '../types';
+import { findCodexBinaryPath } from './CodexBinaryLocator';
 import { CodexSessionManager } from './CodexSessionManager';
 
 const DEFAULT_CONTEXT_WINDOW = 200_000;
@@ -114,12 +115,24 @@ export class CodexChatRuntime implements ChatRuntime {
       const baseEnv = Object.fromEntries(
         Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
       );
-      this.codex = new Codex({
-        env: {
-          ...baseEnv,
-          ...customEnv,
-        },
-      });
+      const codexPathOverride = findCodexBinaryPath(__dirname, customEnv.PATH);
+      const enhancedPath = getEnhancedPath(customEnv.PATH);
+
+      try {
+        this.codex = new Codex({
+          ...(codexPathOverride ? { codexPathOverride } : {}),
+          env: {
+            ...baseEnv,
+            ...customEnv,
+            PATH: enhancedPath,
+          },
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : 'Unknown Codex initialization error';
+        throw new Error(
+          `Failed to initialize Codex. Build the plugin so .codex-vendor is present, or install \`codex\` on PATH. ${detail}`,
+        );
+      }
     }
     this.setReady(true);
     return true;

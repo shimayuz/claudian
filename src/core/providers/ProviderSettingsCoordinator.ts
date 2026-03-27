@@ -128,7 +128,12 @@ export class ProviderSettingsCoordinator {
     const currentBudget = typeof settings.thinkingBudget === 'string' ? settings.thinkingBudget : undefined;
     const modelOptions = uiConfig.getModelOptions(settings);
     const shouldPreferCurrentProjection = providerId === getActiveProviderId(settings);
+    const isDefaultModelOfAnotherProvider = currentModel.length > 0
+      && ProviderRegistry.getRegisteredProviderIds()
+        .filter(id => id !== providerId)
+        .some(id => ProviderRegistry.getChatUIConfig(id).isDefaultModel(currentModel));
     const canReuseCurrentModel = currentModel.length > 0
+      && !isDefaultModelOfAnotherProvider
       && (
         shouldPreferCurrentProjection
         || modelOptions.some(option => option.value === currentModel)
@@ -136,7 +141,10 @@ export class ProviderSettingsCoordinator {
     const fallbackModel = canReuseCurrentModel
       ? currentModel
       : (modelOptions[0]?.value ?? currentModel);
-    const model = savedModel?.[providerId] ?? fallbackModel;
+    const savedModelValue = savedModel?.[providerId];
+    const isSavedModelValid = savedModelValue !== undefined
+      && modelOptions.some(option => option.value === savedModelValue);
+    const model = (isSavedModelValid ? savedModelValue : undefined) ?? fallbackModel;
     const canReuseCurrentProjection = canReuseCurrentModel && model === currentModel;
 
     if (model) {
