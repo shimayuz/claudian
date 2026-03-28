@@ -4,7 +4,7 @@ import { parseEnvironmentVariables } from '../../../utils/env';
 import { getCodexState } from '../types';
 import { codexChatUIConfig } from '../ui/CodexChatUIConfig';
 
-const ENV_HASH_KEYS = ['OPENAI_MODEL', 'OPENAI_BASE_URL'];
+const ENV_HASH_KEYS = ['OPENAI_MODEL', 'OPENAI_BASE_URL', 'OPENAI_API_KEY'];
 
 function computeCodexEnvHash(envText: string): string {
   const envVars = parseEnvironmentVariables(envText || '');

@@ -3,6 +3,7 @@ import type { App } from 'obsidian';
 import { Notice, PluginSettingTab, Setting } from 'obsidian';
 
 import { ProviderRegistry } from '../../core/providers';
+import type { ProviderId } from '../../core/providers/types';
 import { getCurrentPlatformKey } from '../../core/types';
 import { getAvailableLocales, getLocaleDisplayName, setLocale, t } from '../../i18n';
 import type { Locale, TranslationKey } from '../../i18n/types';
@@ -17,6 +18,8 @@ import { EnvSnippetManager } from './ui/EnvSnippetManager';
 import { McpSettingsManager } from './ui/McpSettingsManager';
 import { PluginSettingsManager } from './ui/PluginSettingsManager';
 import { SlashCommandSettings } from './ui/SlashCommandSettings';
+
+type SettingsTabId = 'general' | 'claude' | 'codex';
 
 function formatHotkey(hotkey: { modifiers: string[]; key: string }): string {
   const isMac = navigator.platform.includes('Mac');
@@ -78,6 +81,7 @@ function addHotkeySettingRow(
 export class ClaudianSettingTab extends PluginSettingTab {
   plugin: ClaudianPlugin;
   private contextLimitsContainer: HTMLElement | null = null;
+  private activeTab: SettingsTabId = 'general';
 
   constructor(app: App, plugin: ClaudianPlugin) {
     super(app, plugin);
@@ -95,7 +99,44 @@ export class ClaudianSettingTab extends PluginSettingTab {
 
     setLocale(this.plugin.settings.locale as Locale);
 
-    new Setting(containerEl)
+    // -- Tab bar --
+    const tabBar = containerEl.createDiv({ cls: 'claudian-settings-tabs' });
+    const tabIds: SettingsTabId[] = ['general', 'claude', 'codex'];
+    const tabButtons: Record<string, HTMLButtonElement> = {};
+    const tabContents: Record<string, HTMLDivElement> = {};
+
+    for (const id of tabIds) {
+      const btn = tabBar.createEl('button', {
+        cls: `claudian-settings-tab${id === this.activeTab ? ' claudian-settings-tab--active' : ''}`,
+        text: t(`settings.tabs.${id}` as TranslationKey),
+      });
+      btn.addEventListener('click', () => {
+        this.activeTab = id;
+        for (const tid of tabIds) {
+          tabButtons[tid].toggleClass('claudian-settings-tab--active', tid === id);
+          tabContents[tid].toggleClass('claudian-settings-tab-content--active', tid === id);
+        }
+      });
+      tabButtons[id] = btn;
+    }
+
+    for (const id of tabIds) {
+      const content = containerEl.createDiv({
+        cls: `claudian-settings-tab-content${id === this.activeTab ? ' claudian-settings-tab-content--active' : ''}`,
+      });
+      tabContents[id] = content;
+    }
+
+    // -- Render tab contents --
+    this.renderGeneralTab(tabContents['general']);
+    this.renderClaudeTab(tabContents['claude']);
+    this.renderCodexTab(tabContents['codex']);
+  }
+
+  // ── General tab ──
+
+  private renderGeneralTab(container: HTMLElement): void {
+    new Setting(container)
       .setName(t('settings.language.name'))
       .setDesc(t('settings.language.desc'))
       .addDropdown((dropdown) => {
@@ -107,19 +148,16 @@ export class ClaudianSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.locale)
           .onChange(async (value: Locale) => {
             if (!setLocale(value)) {
-              // Invalid locale - reset dropdown to current value
               dropdown.setValue(this.plugin.settings.locale);
               return;
             }
             this.plugin.settings.locale = value;
             await this.plugin.saveSettings();
-            // Re-render the entire settings page with new language
             this.display();
           });
       });
 
-    // -- Provider selection --
-    new Setting(containerEl)
+    new Setting(container)
       .setName('Enable Codex provider')
       .setDesc('When enabled, Codex models appear in the model selector for new conversations. Existing Codex sessions are always preserved.')
       .addToggle((toggle) =>
@@ -128,7 +166,6 @@ export class ClaudianSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.codexEnabled = value;
             await this.plugin.saveSettings();
-            // Notify all views to refresh model selectors and handle Codex fallback
             for (const view of this.plugin.getAllViews()) {
               view.refreshModelSelector();
             }
@@ -136,9 +173,9 @@ export class ClaudianSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl).setName(t('settings.customization')).setHeading();
+    new Setting(container).setName(t('settings.customization')).setHeading();
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.userName.name'))
       .setDesc(t('settings.userName.desc'))
       .addText((text) => {
@@ -152,7 +189,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
         text.inputEl.addEventListener('blur', () => this.restartServiceForPromptChange());
       });
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.excludedTags.name'))
       .setDesc(t('settings.excludedTags.desc'))
       .addTextArea((text) => {
@@ -170,7 +207,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
         text.inputEl.cols = 30;
       });
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.mediaFolder.name'))
       .setDesc(t('settings.mediaFolder.desc'))
       .addText((text) => {
@@ -185,7 +222,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
         text.inputEl.addEventListener('blur', () => this.restartServiceForPromptChange());
       });
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.systemPrompt.name'))
       .setDesc(t('settings.systemPrompt.desc'))
       .addTextArea((text) => {
@@ -201,7 +238,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
         text.inputEl.addEventListener('blur', () => this.restartServiceForPromptChange());
       });
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.enableAutoScroll.name'))
       .setDesc(t('settings.enableAutoScroll.desc'))
       .addToggle((toggle) =>
@@ -213,7 +250,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.autoTitle.name'))
       .setDesc(t('settings.autoTitle.desc'))
       .addToggle((toggle) =>
@@ -227,35 +264,35 @@ export class ClaudianSettingTab extends PluginSettingTab {
       );
 
     if (this.plugin.settings.enableAutoTitleGeneration) {
-      // Title generation model setting (Claude-only feature, always available)
-      {
-        new Setting(containerEl)
-          .setName(t('settings.titleModel.name'))
-          .setDesc(t('settings.titleModel.desc'))
-          .addDropdown((dropdown) => {
-            // Add "Auto" option (empty string = use default logic)
-            dropdown.addOption('', t('settings.titleModel.auto'));
+      new Setting(container)
+        .setName(t('settings.titleModel.name'))
+        .setDesc(t('settings.titleModel.desc'))
+        .addDropdown((dropdown) => {
+          dropdown.addOption('', t('settings.titleModel.auto'));
 
-            const uiConfig = ProviderRegistry.getChatUIConfig();
-            const models = uiConfig.getModelOptions(
-              this.plugin.settings as unknown as Record<string, unknown>,
-            );
-
-            for (const model of models) {
-              dropdown.addOption(model.value, model.label);
+          // Collect models from all registered providers
+          const settingsBag = this.plugin.settings as unknown as Record<string, unknown>;
+          const seenValues = new Set<string>();
+          for (const providerId of ProviderRegistry.getRegisteredProviderIds()) {
+            const uiConfig = ProviderRegistry.getChatUIConfig(providerId as ProviderId);
+            for (const model of uiConfig.getModelOptions(settingsBag)) {
+              if (!seenValues.has(model.value)) {
+                seenValues.add(model.value);
+                dropdown.addOption(model.value, model.label);
+              }
             }
+          }
 
-            dropdown
-              .setValue(this.plugin.settings.titleGenerationModel || '')
-              .onChange(async (value) => {
-                this.plugin.settings.titleGenerationModel = value;
-                await this.plugin.saveSettings();
-              });
-          });
-      }
+          dropdown
+            .setValue(this.plugin.settings.titleGenerationModel || '')
+            .onChange(async (value) => {
+              this.plugin.settings.titleGenerationModel = value;
+              await this.plugin.saveSettings();
+            });
+        });
     }
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.navMappings.name'))
       .setDesc(t('settings.navMappings.desc'))
       .addTextArea((text) => {
@@ -309,8 +346,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
         });
       });
 
-    // Tab bar position setting
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.tabBarPosition.name'))
       .setDesc(t('settings.tabBarPosition.desc'))
       .addDropdown((dropdown) => {
@@ -322,7 +358,6 @@ export class ClaudianSettingTab extends PluginSettingTab {
             this.plugin.settings.tabBarPosition = value;
             await this.plugin.saveSettings();
 
-            // Update all views' layouts immediately
             for (const leaf of this.plugin.app.workspace.getLeavesOfType('claudian-view')) {
               if (leaf.view instanceof ClaudianView) {
                 leaf.view.updateLayoutForPosition();
@@ -331,8 +366,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
           });
       });
 
-    // Open in main tab setting
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.openInMainTab.name'))
       .setDesc(t('settings.openInMainTab.desc'))
       .addToggle((toggle) =>
@@ -344,95 +378,47 @@ export class ClaudianSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl).setName(t('settings.hotkeys')).setHeading();
+    const maxTabsSetting = new Setting(container)
+      .setName(t('settings.maxTabs.name'))
+      .setDesc(t('settings.maxTabs.desc'));
 
-    const hotkeyGrid = containerEl.createDiv({ cls: 'claudian-hotkey-grid' });
+    const maxTabsWarningEl = container.createDiv({ cls: 'claudian-max-tabs-warning' });
+    maxTabsWarningEl.style.color = 'var(--text-warning)';
+    maxTabsWarningEl.style.fontSize = '0.85em';
+    maxTabsWarningEl.style.marginTop = '-0.5em';
+    maxTabsWarningEl.style.marginBottom = '0.5em';
+    maxTabsWarningEl.style.display = 'none';
+    maxTabsWarningEl.setText(t('settings.maxTabs.warning'));
+
+    const updateMaxTabsWarning = (value: number): void => {
+      maxTabsWarningEl.style.display = value > 5 ? 'block' : 'none';
+    };
+
+    maxTabsSetting.addSlider((slider) => {
+      slider
+        .setLimits(3, 10, 1)
+        .setValue(this.plugin.settings.maxTabs ?? 3)
+        .setDynamicTooltip()
+        .onChange(async (value) => {
+          this.plugin.settings.maxTabs = value;
+          await this.plugin.saveSettings();
+          updateMaxTabsWarning(value);
+        });
+      updateMaxTabsWarning(this.plugin.settings.maxTabs ?? 3);
+    });
+
+    new Setting(container).setName(t('settings.hotkeys')).setHeading();
+
+    const hotkeyGrid = container.createDiv({ cls: 'claudian-hotkey-grid' });
     addHotkeySettingRow(hotkeyGrid, this.app, 'claudian:inline-edit', 'settings.inlineEditHotkey');
     addHotkeySettingRow(hotkeyGrid, this.app, 'claudian:open-view', 'settings.openChatHotkey');
     addHotkeySettingRow(hotkeyGrid, this.app, 'claudian:new-session', 'settings.newSessionHotkey');
     addHotkeySettingRow(hotkeyGrid, this.app, 'claudian:new-tab', 'settings.newTabHotkey');
     addHotkeySettingRow(hotkeyGrid, this.app, 'claudian:close-current-tab', 'settings.closeTabHotkey');
 
-    new Setting(containerEl).setName(t('settings.slashCommands.name')).setHeading();
+    new Setting(container).setName(t('settings.safety')).setHeading();
 
-    const slashCommandsDesc = containerEl.createDiv({ cls: 'claudian-sp-settings-desc' });
-    const descP = slashCommandsDesc.createEl('p', { cls: 'setting-item-description' });
-    descP.appendText(t('settings.slashCommands.desc') + ' ');
-    descP.createEl('a', {
-      text: 'Learn more',
-      href: 'https://code.claude.com/docs/en/skills',
-    });
-
-    const slashCommandsContainer = containerEl.createDiv({ cls: 'claudian-slash-commands-container' });
-    new SlashCommandSettings(slashCommandsContainer, this.plugin);
-
-    new Setting(containerEl)
-      .setName(t('settings.hiddenSlashCommands.name'))
-      .setDesc(t('settings.hiddenSlashCommands.desc'))
-      .addTextArea((text) => {
-        text
-          .setPlaceholder(t('settings.hiddenSlashCommands.placeholder'))
-          .setValue((this.plugin.settings.hiddenSlashCommands || []).join('\n'))
-          .onChange(async (value) => {
-            this.plugin.settings.hiddenSlashCommands = value
-              .split(/\r?\n/)
-              .map((s) => s.trim().replace(/^\//, ''))
-              .filter((s) => s.length > 0);
-            await this.plugin.saveSettings();
-            this.plugin.getView()?.updateHiddenSlashCommands();
-          });
-        text.inputEl.rows = 4;
-        text.inputEl.cols = 30;
-      });
-
-    new Setting(containerEl).setName(t('settings.subagents.name')).setHeading();
-
-    const agentsDesc = containerEl.createDiv({ cls: 'claudian-sp-settings-desc' });
-    agentsDesc.createEl('p', {
-      text: t('settings.subagents.desc'),
-      cls: 'setting-item-description',
-    });
-
-    const agentsContainer = containerEl.createDiv({ cls: 'claudian-agents-container' });
-    new AgentSettings(agentsContainer, this.plugin);
-
-    new Setting(containerEl).setName(t('settings.mcpServers.name')).setHeading();
-
-    const mcpDesc = containerEl.createDiv({ cls: 'claudian-mcp-settings-desc' });
-    mcpDesc.createEl('p', {
-      text: t('settings.mcpServers.desc'),
-      cls: 'setting-item-description',
-    });
-
-    const mcpContainer = containerEl.createDiv({ cls: 'claudian-mcp-container' });
-    new McpSettingsManager(mcpContainer, this.plugin);
-
-    new Setting(containerEl).setName(t('settings.plugins.name')).setHeading();
-
-    const pluginsDesc = containerEl.createDiv({ cls: 'claudian-plugin-settings-desc' });
-    pluginsDesc.createEl('p', {
-      text: t('settings.plugins.desc'),
-      cls: 'setting-item-description',
-    });
-
-    const pluginsContainer = containerEl.createDiv({ cls: 'claudian-plugins-container' });
-    new PluginSettingsManager(pluginsContainer, this.plugin);
-
-    new Setting(containerEl).setName(t('settings.safety')).setHeading();
-
-    new Setting(containerEl)
-      .setName(t('settings.loadUserSettings.name'))
-      .setDesc(t('settings.loadUserSettings.desc'))
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.loadUserClaudeSettings)
-          .onChange(async (value) => {
-            this.plugin.settings.loadUserClaudeSettings = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.enableBlocklist.name'))
       .setDesc(t('settings.enableBlocklist.desc'))
       .addToggle((toggle) =>
@@ -444,7 +430,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.allowExternalAccess.name'))
       .setDesc(t('settings.allowExternalAccess.desc'))
       .addToggle((toggle) =>
@@ -462,7 +448,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
     const isWindows = platformKey === 'windows';
     const platformLabel = isWindows ? 'Windows' : 'Unix';
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.blockedCommands.name', { platform: platformLabel }))
       .setDesc(t('settings.blockedCommands.desc', { platform: platformLabel }))
       .addTextArea((text) => {
@@ -483,9 +469,8 @@ export class ClaudianSettingTab extends PluginSettingTab {
         text.inputEl.cols = 40;
       });
 
-    // On Windows, show Unix blocklist too since Git Bash can run Unix commands
     if (isWindows) {
-      new Setting(containerEl)
+      new Setting(container)
         .setName(t('settings.blockedCommands.unixName'))
         .setDesc(t('settings.blockedCommands.unixDesc'))
         .addTextArea((text) => {
@@ -504,7 +489,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
         });
     }
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.exportPaths.name'))
       .setDesc(
         this.plugin.settings.allowExternalAccess
@@ -531,9 +516,79 @@ export class ClaudianSettingTab extends PluginSettingTab {
         text.inputEl.addEventListener('blur', () => this.restartServiceForPromptChange());
       });
 
-    new Setting(containerEl).setName(t('settings.environment')).setHeading();
+  }
 
-    new Setting(containerEl)
+  // ── Claude tab ──
+
+  private renderClaudeTab(container: HTMLElement): void {
+    new Setting(container).setName(t('settings.slashCommands.name')).setHeading();
+
+    const slashCommandsDesc = container.createDiv({ cls: 'claudian-sp-settings-desc' });
+    const descP = slashCommandsDesc.createEl('p', { cls: 'setting-item-description' });
+    descP.appendText(t('settings.slashCommands.desc') + ' ');
+    descP.createEl('a', {
+      text: 'Learn more',
+      href: 'https://code.claude.com/docs/en/skills',
+    });
+
+    const slashCommandsContainer = container.createDiv({ cls: 'claudian-slash-commands-container' });
+    new SlashCommandSettings(slashCommandsContainer, this.plugin);
+
+    new Setting(container)
+      .setName(t('settings.hiddenSlashCommands.name'))
+      .setDesc(t('settings.hiddenSlashCommands.desc'))
+      .addTextArea((text) => {
+        text
+          .setPlaceholder(t('settings.hiddenSlashCommands.placeholder'))
+          .setValue((this.plugin.settings.hiddenSlashCommands || []).join('\n'))
+          .onChange(async (value) => {
+            this.plugin.settings.hiddenSlashCommands = value
+              .split(/\r?\n/)
+              .map((s) => s.trim().replace(/^\//, ''))
+              .filter((s) => s.length > 0);
+            await this.plugin.saveSettings();
+            this.plugin.getView()?.updateHiddenSlashCommands();
+          });
+        text.inputEl.rows = 4;
+        text.inputEl.cols = 30;
+      });
+
+    new Setting(container).setName(t('settings.subagents.name')).setHeading();
+
+    const agentsDesc = container.createDiv({ cls: 'claudian-sp-settings-desc' });
+    agentsDesc.createEl('p', {
+      text: t('settings.subagents.desc'),
+      cls: 'setting-item-description',
+    });
+
+    const agentsContainer = container.createDiv({ cls: 'claudian-agents-container' });
+    new AgentSettings(agentsContainer, this.plugin);
+
+    new Setting(container).setName(t('settings.mcpServers.name')).setHeading();
+
+    const mcpDesc = container.createDiv({ cls: 'claudian-mcp-settings-desc' });
+    mcpDesc.createEl('p', {
+      text: t('settings.mcpServers.desc'),
+      cls: 'setting-item-description',
+    });
+
+    const mcpContainer = container.createDiv({ cls: 'claudian-mcp-container' });
+    new McpSettingsManager(mcpContainer, this.plugin);
+
+    new Setting(container).setName(t('settings.plugins.name')).setHeading();
+
+    const pluginsDesc = container.createDiv({ cls: 'claudian-plugin-settings-desc' });
+    pluginsDesc.createEl('p', {
+      text: t('settings.plugins.desc'),
+      cls: 'setting-item-description',
+    });
+
+    const pluginsContainer = container.createDiv({ cls: 'claudian-plugins-container' });
+    new PluginSettingsManager(pluginsContainer, this.plugin);
+
+    new Setting(container).setName(t('settings.environment')).setHeading();
+
+    new Setting(container)
       .setName(t('settings.customVariables.name'))
       .setDesc(t('settings.customVariables.desc'))
       .addTextArea((text) => {
@@ -549,17 +604,31 @@ export class ClaudianSettingTab extends PluginSettingTab {
         });
       });
 
-    this.contextLimitsContainer = containerEl.createDiv({ cls: 'claudian-context-limits-container' });
+    this.contextLimitsContainer = container.createDiv({ cls: 'claudian-context-limits-container' });
     this.renderContextLimitsSection();
 
-    const envSnippetsContainer = containerEl.createDiv({ cls: 'claudian-env-snippets-container' });
+    const envSnippetsContainer = container.createDiv({ cls: 'claudian-env-snippets-container' });
     new EnvSnippetManager(envSnippetsContainer, this.plugin, () => {
       this.renderContextLimitsSection();
     });
 
-    new Setting(containerEl).setName(t('settings.advanced')).setHeading();
+    new Setting(container).setName(t('settings.safety')).setHeading();
 
-    new Setting(containerEl)
+    new Setting(container)
+      .setName(t('settings.loadUserSettings.name'))
+      .setDesc(t('settings.loadUserSettings.desc'))
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.loadUserClaudeSettings)
+          .onChange(async (value) => {
+            this.plugin.settings.loadUserClaudeSettings = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(container).setName(t('settings.advanced')).setHeading();
+
+    new Setting(container)
       .setName(t('settings.enableOpus1M.name'))
       .setDesc(t('settings.enableOpus1M.desc'))
       .addToggle((toggle) =>
@@ -576,7 +645,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.enableSonnet1M.name'))
       .setDesc(t('settings.enableSonnet1M.desc'))
       .addToggle((toggle) =>
@@ -593,7 +662,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.enableChrome.name'))
       .setDesc(t('settings.enableChrome.desc'))
       .addToggle((toggle) =>
@@ -605,7 +674,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
+    new Setting(container)
       .setName(t('settings.enableBangBash.name'))
       .setDesc(t('settings.enableBangBash.desc'))
       .addToggle((toggle) =>
@@ -628,41 +697,12 @@ export class ClaudianSettingTab extends PluginSettingTab {
           })
       );
 
-    const bangBashValidationEl = containerEl.createDiv({ cls: 'claudian-bang-bash-validation' });
+    const bangBashValidationEl = container.createDiv({ cls: 'claudian-bang-bash-validation' });
     bangBashValidationEl.style.color = 'var(--text-error)';
     bangBashValidationEl.style.fontSize = '0.85em';
     bangBashValidationEl.style.marginTop = '-0.5em';
     bangBashValidationEl.style.marginBottom = '0.5em';
     bangBashValidationEl.style.display = 'none';
-
-    const maxTabsSetting = new Setting(containerEl)
-      .setName(t('settings.maxTabs.name'))
-      .setDesc(t('settings.maxTabs.desc'));
-
-    const maxTabsWarningEl = containerEl.createDiv({ cls: 'claudian-max-tabs-warning' });
-    maxTabsWarningEl.style.color = 'var(--text-warning)';
-    maxTabsWarningEl.style.fontSize = '0.85em';
-    maxTabsWarningEl.style.marginTop = '-0.5em';
-    maxTabsWarningEl.style.marginBottom = '0.5em';
-    maxTabsWarningEl.style.display = 'none';
-    maxTabsWarningEl.setText(t('settings.maxTabs.warning'));
-
-    const updateMaxTabsWarning = (value: number): void => {
-      maxTabsWarningEl.style.display = value > 5 ? 'block' : 'none';
-    };
-
-    maxTabsSetting.addSlider((slider) => {
-      slider
-        .setLimits(3, 10, 1)
-        .setValue(this.plugin.settings.maxTabs ?? 3)
-        .setDynamicTooltip()
-        .onChange(async (value) => {
-          this.plugin.settings.maxTabs = value;
-          await this.plugin.saveSettings();
-          updateMaxTabsWarning(value);
-        });
-      updateMaxTabsWarning(this.plugin.settings.maxTabs ?? 3);
-    });
 
     const hostnameKey = getHostnameKey();
 
@@ -671,11 +711,11 @@ export class ClaudianSettingTab extends PluginSettingTab {
       : t('settings.cliPath.descUnix');
     const cliPathDescription = `${t('settings.cliPath.desc')} ${platformDesc}`;
 
-    const cliPathSetting = new Setting(containerEl)
+    const cliPathSetting = new Setting(container)
       .setName(`${t('settings.cliPath.name')} (${hostnameKey})`)
       .setDesc(cliPathDescription);
 
-    const validationEl = containerEl.createDiv({ cls: 'claudian-cli-path-validation' });
+    const validationEl = container.createDiv({ cls: 'claudian-cli-path-validation' });
     validationEl.style.color = 'var(--text-error)';
     validationEl.style.fontSize = '0.85em';
     validationEl.style.marginTop = '-0.5em';
@@ -684,7 +724,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
 
     const validatePath = (value: string): string | null => {
       const trimmed = value.trim();
-      if (!trimmed) return null; // Empty is valid (auto-detect)
+      if (!trimmed) return null;
 
       const expandedPath = expandHomePath(trimmed);
 
@@ -743,6 +783,92 @@ export class ClaudianSettingTab extends PluginSettingTab {
     });
   }
 
+  // ── Codex tab ──
+
+  private renderCodexTab(container: HTMLElement): void {
+    const hostnameKey = getHostnameKey();
+    const platformHint = process.platform === 'win32'
+      ? 'Use the local `codex.exe` path from your Codex CLI installation.'
+      : 'Paste the output of `which codex` from a terminal where Codex works.';
+
+    const cliPathSetting = new Setting(container)
+      .setName(`Codex CLI path (${hostnameKey})`)
+      .setDesc(`Custom path to the local Codex CLI. Leave empty for auto-detection from PATH. ${platformHint}`);
+
+    const validationEl = container.createDiv({ cls: 'claudian-cli-path-validation' });
+    validationEl.style.color = 'var(--text-error)';
+    validationEl.style.fontSize = '0.85em';
+    validationEl.style.marginTop = '-0.5em';
+    validationEl.style.marginBottom = '0.5em';
+    validationEl.style.display = 'none';
+
+    const validatePath = (value: string): string | null => {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+
+      const expandedPath = expandHomePath(trimmed);
+
+      if (!fs.existsSync(expandedPath)) {
+        return t('settings.cliPath.validation.notExist');
+      }
+      const stat = fs.statSync(expandedPath);
+      if (!stat.isFile()) {
+        return t('settings.cliPath.validation.isDirectory');
+      }
+      return null;
+    };
+
+    const currentValue = this.plugin.settings.codexCliPathsByHost?.[hostnameKey] || '';
+
+    cliPathSetting.addText((text) => {
+      const placeholder = process.platform === 'win32'
+        ? 'C:\\Users\\you\\AppData\\Roaming\\npm\\codex.exe'
+        : '/opt/homebrew/bin/codex';
+
+      text
+        .setPlaceholder(placeholder)
+        .setValue(currentValue)
+        .onChange(async (value) => {
+          const error = validatePath(value);
+          if (error) {
+            validationEl.setText(error);
+            validationEl.style.display = 'block';
+            text.inputEl.style.borderColor = 'var(--text-error)';
+          } else {
+            validationEl.style.display = 'none';
+            text.inputEl.style.borderColor = '';
+          }
+
+          const trimmed = value.trim();
+          if (!this.plugin.settings.codexCliPathsByHost) {
+            this.plugin.settings.codexCliPathsByHost = {};
+          }
+
+          if (trimmed) {
+            this.plugin.settings.codexCliPathsByHost[hostnameKey] = trimmed;
+          } else {
+            delete this.plugin.settings.codexCliPathsByHost[hostnameKey];
+          }
+          await this.plugin.saveSettings();
+          const view = this.plugin.getView();
+          await view?.getTabManager()?.broadcastToAllTabs(
+            (service) => Promise.resolve(service.cleanup())
+          );
+        });
+      text.inputEl.addClass('claudian-settings-cli-path-input');
+      text.inputEl.style.width = '100%';
+
+      const initialError = validatePath(currentValue);
+      if (initialError) {
+        validationEl.setText(initialError);
+        validationEl.style.display = 'block';
+        text.inputEl.style.borderColor = 'var(--text-error)';
+      }
+    });
+  }
+
+  // ── Shared helpers ──
+
   private renderContextLimitsSection(): void {
     const container = this.contextLimitsContainer;
     if (!container) return;
@@ -781,7 +907,6 @@ export class ClaudianSettingTab extends PluginSettingTab {
         value: currentValue ? formatContextLimit(currentValue) : '',
       });
 
-      // Validation element
       const validationEl = inputWrapper.createDiv({ cls: 'claudian-context-limit-validation' });
 
       inputEl.addEventListener('input', async () => {
@@ -792,7 +917,6 @@ export class ClaudianSettingTab extends PluginSettingTab {
         }
 
         if (!trimmed) {
-          // Empty = use default (remove from custom limits)
           delete this.plugin.settings.customContextLimits[modelId];
           validationEl.style.display = 'none';
           inputEl.classList.remove('claudian-input-error');
@@ -802,7 +926,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
             validationEl.setText(t('settings.customContextLimits.invalid'));
             validationEl.style.display = 'block';
             inputEl.classList.add('claudian-input-error');
-            return; // Don't save invalid value
+            return;
           }
 
           this.plugin.settings.customContextLimits[modelId] = parsed;

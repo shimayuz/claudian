@@ -2,8 +2,11 @@ jest.mock('@/utils/date', () => ({
   getTodayDate: () => 'Mocked Date',
 }));
 
-import { getInlineEditSystemPrompt } from '@/providers/claude/prompt/inlineEdit';
-import { buildSystemPrompt } from '@/providers/claude/prompt/mainAgent';
+import {
+  buildSystemPrompt,
+  computeSystemPromptKey,
+  getInlineEditSystemPrompt,
+} from '@/core/prompt';
 
 describe('systemPrompt', () => {
   describe('buildSystemPrompt', () => {
@@ -29,6 +32,16 @@ describe('systemPrompt', () => {
       expect(prompt).toContain('Claudian');
       expect(prompt).toContain('# Path Rules');
       expect(prompt).toContain('# User Message Format');
+    });
+
+    it('should omit Claude-specific tool guidance from the shared prompt', () => {
+      const prompt = buildSystemPrompt();
+
+      expect(prompt).not.toContain('## Tool Usage Guidelines');
+      expect(prompt).not.toContain('### WebSearch');
+      expect(prompt).not.toContain('### Agent (Subagents)');
+      expect(prompt).not.toContain('### TodoWrite');
+      expect(prompt).not.toContain('### Skills');
     });
 
     it('should include allowed export paths instructions when configured', () => {
@@ -158,6 +171,46 @@ describe('systemPrompt', () => {
       expect(prompt).toContain('Prefer RELATIVE paths for vault files');
       expect(prompt).toContain('Use absolute or `~` paths only');
       expect(prompt).not.toContain('Must be RELATIVE to vault root');
+    });
+  });
+
+  describe('computeSystemPromptKey', () => {
+    it('computes key from all settings', () => {
+      const settings = {
+        mediaFolder: 'attachments',
+        customPrompt: 'Be helpful',
+        allowedExportPaths: ['/path/b', '/path/a'],
+        vaultPath: '/vault',
+        userName: 'Alice',
+      };
+
+      const key = computeSystemPromptKey(settings);
+
+      expect(key).toBe('attachments::Be helpful::/path/a|/path/b::/vault::Alice::false');
+    });
+
+    it('handles empty or undefined values', () => {
+      const key = computeSystemPromptKey({
+        mediaFolder: '',
+        customPrompt: '',
+        allowedExportPaths: [],
+        vaultPath: '',
+        userName: '',
+      });
+
+      expect(key).toBe('::::::::::false');
+    });
+
+    it('changes when external access changes', () => {
+      const base = {
+        mediaFolder: '',
+        customPrompt: '',
+        allowedExportPaths: [],
+        vaultPath: '/vault',
+      };
+
+      expect(computeSystemPromptKey({ ...base, allowExternalAccess: false }))
+        .not.toBe(computeSystemPromptKey({ ...base, allowExternalAccess: true }));
     });
   });
 });

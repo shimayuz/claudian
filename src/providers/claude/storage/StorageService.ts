@@ -87,6 +87,8 @@ interface LegacySettingsJson {
   keyboardNavigation?: unknown;
   claudeCliPath?: string;
   claudeCliPaths?: unknown;
+  codexCliPath?: string;
+  codexCliPathsByHost?: unknown;
   loadUserClaudeSettings?: boolean;
   enableAutoTitleGeneration?: boolean;
   titleGenerationModel?: string;

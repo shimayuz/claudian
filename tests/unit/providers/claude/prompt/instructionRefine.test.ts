@@ -1,4 +1,4 @@
-import { buildRefineSystemPrompt } from '@/providers/claude/prompt/instructionRefine';
+import { buildRefineSystemPrompt } from '@/core/prompt';
 
 describe('buildRefineSystemPrompt', () => {
   describe('without existing instructions', () => {

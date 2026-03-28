@@ -6,7 +6,6 @@ import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 
 import type { StreamChunk } from '../../../core/types';
 import type { PermissionMode } from '../../../core/types/settings';
-import type { SystemPromptSettings } from '../prompt';
 import type { ClaudeModel, EffortLevel } from '../types';
 
 export interface TextContentBlock {
@@ -136,18 +135,4 @@ export const DISABLED_BUILTIN_SUBAGENTS = [
 
 export function isTurnCompleteMessage(message: SDKMessage): boolean {
   return message.type === 'result';
-}
-
-export function computeSystemPromptKey(settings: SystemPromptSettings): string {
-  // Include only fields surfaced in the system prompt to avoid stale cache hits.
-  const parts = [
-    settings.mediaFolder || '',
-    settings.customPrompt || '',
-    (settings.allowedExportPaths || []).sort().join('|'),
-    settings.vaultPath || '',
-    (settings.userName || '').trim(),
-    String(settings.allowExternalAccess ?? false),
-    // Note: hasEditorContext is per-message, not tracked here
-  ];
-  return parts.join('::');
 }

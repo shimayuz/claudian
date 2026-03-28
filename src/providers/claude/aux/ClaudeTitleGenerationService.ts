@@ -1,6 +1,7 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import { query as agentQuery } from '@anthropic-ai/claude-agent-sdk';
 
+import { TITLE_GENERATION_SYSTEM_PROMPT } from '../../../core/prompt';
 import type {
   TitleGenerationCallback,
   TitleGenerationResult,
@@ -8,7 +9,6 @@ import type {
 import type ClaudianPlugin from '../../../main';
 import { getEnhancedPath, getMissingNodeError, parseEnvironmentVariables } from '../../../utils/env';
 import { getVaultPath } from '../../../utils/path';
-import { TITLE_GENERATION_SYSTEM_PROMPT } from '../prompt';
 import { createCustomSpawnFunction } from '../runtime/customSpawn';
 import { extractAssistantText } from './extractAssistantText';
 

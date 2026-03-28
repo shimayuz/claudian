@@ -1,13 +1,13 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import { query as agentQuery } from '@anthropic-ai/claude-agent-sdk';
 
+import { buildRefineSystemPrompt } from '../../../core/prompt';
 import { ProviderSettingsCoordinator } from '../../../core/providers';
 import type { RefineProgressCallback } from '../../../core/providers/types';
 import type { InstructionRefineResult } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
 import { getEnhancedPath, getMissingNodeError, parseEnvironmentVariables } from '../../../utils/env';
 import { getVaultPath } from '../../../utils/path';
-import { buildRefineSystemPrompt } from '../prompt';
 import { createCustomSpawnFunction } from '../runtime/customSpawn';
 import { type EffortLevel, isAdaptiveThinkingModel, THINKING_BUDGETS } from '../types';
 import { extractAssistantText } from './extractAssistantText';

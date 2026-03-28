@@ -4,7 +4,6 @@ import process from 'process';
 import builtins from 'builtin-modules';
 import {
   copyFileSync,
-  cpSync,
   existsSync,
   mkdirSync,
   promises as fsPromises,
@@ -24,77 +23,6 @@ if (existsSync('.env.local')) {
 }
 
 const prod = process.argv[2] === 'production';
-
-const CODEX_PLATFORM_PACKAGES = {
-  'x86_64-unknown-linux-musl': '@openai/codex-linux-x64',
-  'aarch64-unknown-linux-musl': '@openai/codex-linux-arm64',
-  'x86_64-apple-darwin': '@openai/codex-darwin-x64',
-  'aarch64-apple-darwin': '@openai/codex-darwin-arm64',
-  'x86_64-pc-windows-msvc': '@openai/codex-win32-x64',
-  'aarch64-pc-windows-msvc': '@openai/codex-win32-arm64',
-};
-
-function getCodexTargetTriple(platform = process.platform, arch = process.arch) {
-  switch (platform) {
-    case 'linux':
-    case 'android':
-      return arch === 'x64'
-        ? 'x86_64-unknown-linux-musl'
-        : arch === 'arm64'
-          ? 'aarch64-unknown-linux-musl'
-          : null;
-
-    case 'darwin':
-      return arch === 'x64'
-        ? 'x86_64-apple-darwin'
-        : arch === 'arm64'
-          ? 'aarch64-apple-darwin'
-          : null;
-
-    case 'win32':
-      return arch === 'x64'
-        ? 'x86_64-pc-windows-msvc'
-        : arch === 'arm64'
-          ? 'aarch64-pc-windows-msvc'
-          : null;
-
-    default:
-      return null;
-  }
-}
-
-function getCodexVendorSource() {
-  const targetTriple = getCodexTargetTriple();
-  if (!targetTriple) {
-    return null;
-  }
-
-  const packageName = CODEX_PLATFORM_PACKAGES[targetTriple];
-  if (!packageName) {
-    return null;
-  }
-
-  const vendorDir = path.join('node_modules', packageName, 'vendor', targetTriple);
-  if (!existsSync(vendorDir)) {
-    return null;
-  }
-
-  return { targetTriple, vendorDir };
-}
-
-function syncCodexVendor(outputDir) {
-  const vendorRoot = path.join(outputDir, '.codex-vendor');
-  rmSync(vendorRoot, { recursive: true, force: true });
-
-  const source = getCodexVendorSource();
-  if (!source) {
-    return false;
-  }
-
-  mkdirSync(vendorRoot, { recursive: true });
-  cpSync(source.vendorDir, path.join(vendorRoot, source.targetTriple), { recursive: true });
-  return true;
-}
 
 const patchCodexSdkImportMeta = {
   name: 'patch-codex-sdk-import-meta',
@@ -124,8 +52,7 @@ const copyToObsidian = {
   setup(build) {
     build.onEnd((result) => {
       if (result.errors.length > 0) return;
-
-      const hasCodexVendor = syncCodexVendor(process.cwd());
+      rmSync(path.join(process.cwd(), '.codex-vendor'), { recursive: true, force: true });
 
       if (!OBSIDIAN_PLUGIN_PATH) return;
 
@@ -143,11 +70,6 @@ const copyToObsidian = {
 
       const pluginVendorRoot = path.join(OBSIDIAN_PLUGIN_PATH, '.codex-vendor');
       rmSync(pluginVendorRoot, { recursive: true, force: true });
-
-      if (hasCodexVendor && existsSync('.codex-vendor')) {
-        cpSync('.codex-vendor', pluginVendorRoot, { recursive: true });
-        console.log('Copied .codex-vendor to Obsidian plugin folder');
-      }
     });
   }
 };

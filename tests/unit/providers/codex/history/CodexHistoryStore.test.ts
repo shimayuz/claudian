@@ -203,6 +203,58 @@ describe('CodexHistoryStore', () => {
         { type: 'text', content: 'The diff looks good.' },
       ]);
     });
+
+    it('deduplicates the same user message when both response_item and event_msg are persisted', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'hi' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.001Z',
+          type: 'event_msg',
+          payload: {
+            type: 'user_message',
+            message: 'hi',
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'event_msg',
+          payload: {
+            type: 'agent_message',
+            message: 'Hello there.',
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.001Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'Hello there.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toEqual([
+        expect.objectContaining({
+          role: 'user',
+          content: 'hi',
+        }),
+        expect.objectContaining({
+          role: 'assistant',
+          content: 'Hello there.',
+        }),
+      ]);
+    });
   });
 
   describe('parseCodexSessionFile - persisted tools', () => {
@@ -540,6 +592,457 @@ describe('CodexHistoryStore', () => {
       expect(searchTool!.id).toBe('call_ws_1');
       expect(searchTool!.input.query).toBe('obsidian plugin API');
       expect(searchTool!.status).toBe('completed');
+    });
+  });
+
+  describe('parseCodexSessionContent - event_msg handling', () => {
+    it('task_started + agent_message + task_complete produces proper turn', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Hello' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_started' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'event_msg',
+          payload: { type: 'agent_message', message: 'Hi there!' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:03.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_complete' },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toMatchObject({ role: 'user', content: 'Hello' });
+      expect(messages[1]).toMatchObject({ role: 'assistant', content: 'Hi there!' });
+    });
+
+    it('turn_aborted marks bubble as interrupted', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_started' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'event_msg',
+          payload: { type: 'agent_message', message: 'Working on it...' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'event_msg',
+          payload: { type: 'turn_aborted' },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({
+        role: 'assistant',
+        content: 'Working on it...',
+        isInterrupt: true,
+      });
+    });
+
+    it('user_message reconstructs user ChatMessage from event_msg', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_started' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.500Z',
+          type: 'event_msg',
+          payload: { type: 'user_message', message: 'What is 2+2?' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'event_msg',
+          payload: { type: 'agent_message', message: 'The answer is 4.' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_complete' },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toMatchObject({
+        role: 'user',
+        content: 'What is 2+2?',
+      });
+      expect(messages[1]).toMatchObject({
+        role: 'assistant',
+        content: 'The answer is 4.',
+      });
+    });
+
+    it('user_message with system content is filtered out', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_started' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.500Z',
+          type: 'event_msg',
+          payload: { type: 'user_message', message: '# AGENTS.md instructions for /test\nDo good.' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'event_msg',
+          payload: { type: 'agent_message', message: 'Done.' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_complete' },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      // System user message should be filtered; only assistant remains
+      const userMessages = messages.filter(m => m.role === 'user');
+      expect(userMessages).toHaveLength(0);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ role: 'assistant', content: 'Done.' });
+    });
+  });
+
+  describe('parseCodexSessionContent - multi-bubble turns', () => {
+    it('assistant text + tool call + tool result + more text in single turn', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Check the file.' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'event_msg',
+          payload: { type: 'agent_reasoning', text: 'Let me check.' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'function_call',
+            name: 'exec_command',
+            arguments: '{"command":"cat file.txt"}',
+            call_id: 'call_100',
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:03.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'function_call_output',
+            call_id: 'call_100',
+            output: 'Exit code: 0\nOutput:\nhello world',
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:04.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'The file contains hello world.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(2);
+      expect(messages[0]).toMatchObject({ role: 'user', content: 'Check the file.' });
+
+      const assistant = messages[1];
+      expect(assistant.role).toBe('assistant');
+      expect(assistant.content).toBe('The file contains hello world.');
+
+      // Tool calls should be present
+      expect(assistant.toolCalls).toHaveLength(1);
+      expect(assistant.toolCalls![0]).toMatchObject({
+        id: 'call_100',
+        name: 'Bash',
+        status: 'completed',
+      });
+
+      // Content blocks: thinking, tool_use, text
+      expect(assistant.contentBlocks).toBeDefined();
+      const blockTypes = assistant.contentBlocks!.map(b => b.type);
+      expect(blockTypes).toContain('thinking');
+      expect(blockTypes).toContain('tool_use');
+      expect(blockTypes).toContain('text');
+    });
+  });
+
+  describe('parseCodexSessionContent - cross-turn tool output', () => {
+    it('function_call in turn 1, function_call_output in turn 2 links back', () => {
+      const content = [
+        // Turn 1: user + tool call
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Run the command.' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'function_call',
+            name: 'exec_command',
+            arguments: '{"command":"echo hi"}',
+            call_id: 'call_cross_1',
+          },
+        }),
+        // Turn 2: new user message + output for turn 1's call
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Continue.' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:03.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'function_call_output',
+            call_id: 'call_cross_1',
+            output: 'Exit code: 0\nOutput:\nhi',
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:04.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'Done.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      // Find the assistant message from turn 1 (has the tool call)
+      const turn1Assistant = messages.find(
+        m => m.role === 'assistant' && m.toolCalls?.some(tc => tc.id === 'call_cross_1'),
+      );
+      expect(turn1Assistant).toBeDefined();
+
+      // The tool output should be resolved back to turn 1
+      const tc = turn1Assistant!.toolCalls!.find(t => t.id === 'call_cross_1');
+      expect(tc!.status).toBe('completed');
+      expect(tc!.result).toBe('hi');
+    });
+  });
+
+  describe('parseCodexSessionContent - interrupted message granularity', () => {
+    it('interrupted bubble with content sets isInterrupt on ChatMessage', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_started' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'event_msg',
+          payload: { type: 'agent_message', message: 'Starting to work on the feature...' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'event_msg',
+          payload: { type: 'turn_aborted' },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].content).toBe('Starting to work on the feature...');
+      expect(messages[0].isInterrupt).toBe(true);
+    });
+
+    it('interrupted empty bubble sets isInterrupt on bare ChatMessage', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_started' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'event_msg',
+          payload: { type: 'turn_aborted' },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].content).toBe('');
+      expect(messages[0].isInterrupt).toBe(true);
+    });
+  });
+
+  describe('parseCodexSessionContent - response duration', () => {
+    it('calculates durationSeconds from user timestamp to last assistant event', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Quick question.' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:05.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'Quick answer.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      expect(messages).toHaveLength(2);
+      const assistant = messages.find(m => m.role === 'assistant');
+      expect(assistant!.durationSeconds).toBe(5);
+    });
+
+    it('attaches durationSeconds to the last assistant message of the turn', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Do stuff.' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'function_call',
+            name: 'exec_command',
+            arguments: '{"command":"ls"}',
+            call_id: 'call_dur_1',
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:04.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'function_call_output',
+            call_id: 'call_dur_1',
+            output: 'Exit code: 0\nOutput:\nfile.txt',
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:10.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'Listed files.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      const assistant = messages.find(m => m.role === 'assistant');
+      expect(assistant).toBeDefined();
+      expect(assistant!.durationSeconds).toBe(10);
+    });
+  });
+
+  describe('parseCodexSessionContent - persisted mcp_tool_call', () => {
+    it('restores mcp_tool_call from response_item as mcp__server__tool', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Use MCP tool.' }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'mcp_tool_call',
+            server: 'myserver',
+            tool: 'mytool',
+            call_id: 'call_mcp_1',
+            status: 'completed',
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'MCP tool executed.' }],
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+
+      const assistant = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      expect(assistant).toBeDefined();
+
+      const mcpTool = assistant!.toolCalls!.find(tc => tc.name === 'mcp__myserver__mytool');
+      expect(mcpTool).toBeDefined();
+      expect(mcpTool!.id).toBe('call_mcp_1');
+      expect(mcpTool!.status).toBe('completed');
     });
   });
 });

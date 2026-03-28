@@ -47,6 +47,8 @@ describe('migrationConstants', () => {
     it('contains all expected CLI path fields', () => {
       expect(CLAUDIAN_ONLY_FIELDS.has('claudeCliPath')).toBe(true);
       expect(CLAUDIAN_ONLY_FIELDS.has('claudeCliPaths')).toBe(true);
+      expect(CLAUDIAN_ONLY_FIELDS.has('codexCliPath')).toBe(true);
+      expect(CLAUDIAN_ONLY_FIELDS.has('codexCliPathsByHost')).toBe(true);
       expect(CLAUDIAN_ONLY_FIELDS.has('loadUserClaudeSettings')).toBe(true);
     });
 
@@ -77,6 +79,8 @@ describe('migrationConstants', () => {
     it('contains environment fields including legacy env', () => {
       expect(MIGRATABLE_CLAUDIAN_FIELDS.has('environmentVariables')).toBe(true);
       expect(MIGRATABLE_CLAUDIAN_FIELDS.has('env')).toBe(true);
+      expect(MIGRATABLE_CLAUDIAN_FIELDS.has('codexCliPath')).toBe(true);
+      expect(MIGRATABLE_CLAUDIAN_FIELDS.has('codexCliPathsByHost')).toBe(true);
     });
 
     it('excludes deprecated fields', () => {

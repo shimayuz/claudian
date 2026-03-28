@@ -1,6 +1,6 @@
 import { buildSDKMessage } from '@test/helpers/sdkMessages';
 
-import { computeSystemPromptKey, createResponseHandler, isTurnCompleteMessage } from '@/providers/claude/runtime/types';
+import { createResponseHandler, isTurnCompleteMessage } from '@/providers/claude/runtime/types';
 
 describe('isTurnCompleteMessage', () => {
   it('returns true for result message', () => {
@@ -21,85 +21,6 @@ describe('isTurnCompleteMessage', () => {
   it('returns false for system message', () => {
     const message = buildSDKMessage({ type: 'system', subtype: 'status' });
     expect(isTurnCompleteMessage(message)).toBe(false);
-  });
-});
-
-describe('computeSystemPromptKey', () => {
-  it('computes key from all settings', () => {
-    // Note: Agents are passed via Options.agents, not system prompt, so not included in key.
-    const settings = {
-      mediaFolder: 'attachments',
-      customPrompt: 'Be helpful',
-      allowedExportPaths: ['/path/b', '/path/a'],
-      vaultPath: '/vault',
-      userName: 'Alice',
-    };
-
-    const key = computeSystemPromptKey(settings);
-
-    // Paths are sorted to keep the key stable.
-    expect(key).toBe('attachments::Be helpful::/path/a|/path/b::/vault::Alice::false');
-  });
-
-  it('handles empty/undefined values', () => {
-    const settings = {
-      mediaFolder: '',
-      customPrompt: '',
-      allowedExportPaths: [],
-      vaultPath: '',
-      userName: '',
-    };
-
-    const key = computeSystemPromptKey(settings);
-    // 6 parts joined with '::' = 5 separators = 10 colons, last part is 'false'
-    expect(key).toBe('::::::::::false');
-  });
-
-  it('produces different keys for different inputs', () => {
-    const settings1 = {
-      mediaFolder: 'attachments',
-      customPrompt: 'Be helpful',
-      allowedExportPaths: [],
-      vaultPath: '/vault1',
-    };
-    const settings2 = {
-      mediaFolder: 'attachments',
-      customPrompt: 'Be helpful',
-      allowedExportPaths: [],
-      vaultPath: '/vault2',
-    };
-
-    expect(computeSystemPromptKey(settings1)).not.toBe(computeSystemPromptKey(settings2));
-  });
-
-  it('produces same key for equivalent inputs with different path order', () => {
-    const settings1 = {
-      mediaFolder: '',
-      customPrompt: '',
-      allowedExportPaths: ['/a', '/b', '/c'],
-      vaultPath: '',
-    };
-    const settings2 = {
-      mediaFolder: '',
-      customPrompt: '',
-      allowedExportPaths: ['/c', '/a', '/b'],
-      vaultPath: '',
-    };
-
-    // Paths are sorted, so order shouldn't matter
-    expect(computeSystemPromptKey(settings1)).toBe(computeSystemPromptKey(settings2));
-  });
-
-  it('produces different keys when allowExternalAccess differs', () => {
-    const base = {
-      mediaFolder: '',
-      customPrompt: '',
-      allowedExportPaths: [],
-      vaultPath: '/vault',
-    };
-
-    expect(computeSystemPromptKey({ ...base, allowExternalAccess: false }))
-      .not.toBe(computeSystemPromptKey({ ...base, allowExternalAccess: true }));
   });
 });
 

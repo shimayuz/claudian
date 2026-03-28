@@ -45,6 +45,7 @@ import {
   createClaudePluginManager,
   createClaudeStorage,
 } from './providers/claude/app';
+import { resolveCodexCliPath } from './providers/codex/runtime/CodexBinaryLocator';
 import { buildCursorContext } from './utils/editor';
 import { getHostnameKey } from './utils/env';
 import { getVaultPath } from './utils/path';
@@ -457,6 +458,15 @@ export default class ClaudianPlugin extends Plugin {
       this.settings.claudeCliPathsByHost,  // Per-device paths (preferred)
       this.settings.claudeCliPath,          // Legacy path (fallback)
       this.getActiveEnvironmentVariables()
+    );
+  }
+
+  getResolvedCodexCliPath(): string | null {
+    const hostname = getHostnameKey();
+    return resolveCodexCliPath(
+      this.settings.codexCliPathsByHost?.[hostname],
+      this.settings.codexCliPath,
+      this.getActiveEnvironmentVariables(),
     );
   }
 

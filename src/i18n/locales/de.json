@@ -66,6 +66,11 @@
   },
   "settings": {
     "title": "Claudian Einstellungen",
+    "tabs": {
+      "general": "Allgemein",
+      "claude": "Claude",
+      "codex": "Codex"
+    },
     "customization": "Anpassung",
     "userName": {
       "name": "Wie soll Claudian dich nennen?",

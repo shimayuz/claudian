@@ -185,10 +185,10 @@ function applyProviderUIGating(tab: TabData, plugin: ClaudianPlugin): void {
   tab.ui.mcpServerSelector?.setVisible(isClaude);
   tab.ui.fileContextManager?.setMcpManager(isClaude ? plugin.mcpManager : null);
 
-  // Image attachments are Claude-only
-  tab.ui.imageContextManager?.setEnabled(isClaude);
+  // Image attachments: Claude and Codex (Codex uses temp-file bridge)
+  tab.ui.imageContextManager?.setEnabled(isClaude || capabilities.providerId === 'codex');
 
-  // Context gauge is Claude-only for now
+  // Context gauge is Claude-only
   tab.ui.contextUsageMeter?.setVisible(isClaude);
 }
 

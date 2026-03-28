@@ -1,6 +1,7 @@
 import type { HookCallbackMatcher, Options } from '@anthropic-ai/claude-agent-sdk';
 import { query as agentQuery } from '@anthropic-ai/claude-agent-sdk';
 
+import { getInlineEditSystemPrompt } from '../../../core/prompt';
 import { ProviderSettingsCoordinator } from '../../../core/providers';
 import type {
   InlineEditCursorRequest,
@@ -22,7 +23,6 @@ import type ClaudianPlugin from '../../../main';
 import { appendContextFiles } from '../../../utils/context';
 import { getEnhancedPath, getMissingNodeError, parseEnvironmentVariables } from '../../../utils/env';
 import { getPathAccessType, getVaultPath, type PathAccessType } from '../../../utils/path';
-import { getInlineEditSystemPrompt } from '../prompt';
 import { createCustomSpawnFunction } from '../runtime/customSpawn';
 import { type EffortLevel, isAdaptiveThinkingModel, THINKING_BUDGETS } from '../types';
 

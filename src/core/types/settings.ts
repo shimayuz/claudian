@@ -183,6 +183,8 @@ export interface ClaudianSettings {
   // CLI paths
   claudeCliPath: string;
   claudeCliPathsByHost: HostnameCliPaths;
+  codexCliPath?: string;
+  codexCliPathsByHost?: HostnameCliPaths;
   loadUserClaudeSettings: boolean;
 
   // Provider selection

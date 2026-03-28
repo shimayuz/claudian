@@ -66,6 +66,11 @@
   },
   "settings": {
     "title": "Claudian 設定",
+    "tabs": {
+      "general": "一般",
+      "claude": "Claude",
+      "codex": "Codex"
+    },
     "customization": "個人化設定",
     "userName": {
       "name": "Claudian 應該如何稱呼您？",
