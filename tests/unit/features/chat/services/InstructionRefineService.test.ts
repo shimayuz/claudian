@@ -361,7 +361,7 @@ describe('InstructionRefineService', () => {
       mockPlugin.getResolvedClaudeCliPath.mockReturnValue(null);
       const result = await service.refineInstruction('test', '');
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Claude CLI not found. Please install Claude Code CLI.');
+      expect(result.error).toBe('Claude CLI not found');
     });
   });
 });
