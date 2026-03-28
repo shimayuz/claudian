@@ -14,9 +14,9 @@ export const codexProviderRegistration: ProviderRegistration = {
   chatUIConfig: codexChatUIConfig,
   settingsReconciler: codexSettingsReconciler,
   createRuntime: ({ plugin }) => new CodexChatRuntime(plugin),
-  createTitleGenerationService: () => new CodexTitleGenerationService(),
-  createInstructionRefineService: () => new CodexInstructionRefineService(),
-  createInlineEditService: () => new CodexInlineEditService(),
+  createTitleGenerationService: (plugin) => new CodexTitleGenerationService(plugin),
+  createInstructionRefineService: (plugin) => new CodexInstructionRefineService(plugin),
+  createInlineEditService: (plugin) => new CodexInlineEditService(plugin),
   historyService: new CodexConversationHistoryService(),
   taskResultInterpreter: new CodexTaskResultInterpreter(),
 };

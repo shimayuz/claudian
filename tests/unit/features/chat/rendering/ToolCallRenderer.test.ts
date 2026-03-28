@@ -113,6 +113,49 @@ describe('ToolCallRenderer', () => {
       expect(answerEls).toHaveLength(1);
       expect(answerEls[0].textContent).toBe('Blue');
     });
+
+    it('renders AskUserQuestion answers by stable question id', () => {
+      const parentEl = createMockEl();
+      const toolCall = createToolCall({
+        name: 'AskUserQuestion',
+        status: 'completed',
+        input: { questions: [{ id: 'q1', question: 'Color?' }] },
+        result: '{"answers":{"q1":{"answers":["Blue"]}}}',
+      });
+
+      const toolEl = renderStoredToolCall(parentEl, toolCall);
+      const answerEls = toolEl.querySelectorAll('.claudian-ask-review-a-text');
+
+      expect(answerEls).toHaveLength(1);
+      expect(answerEls[0].textContent).toBe('Blue');
+    });
+
+    it('renders AskUserQuestion options during fallback state', () => {
+      const parentEl = createMockEl();
+      const toolCall = createToolCall({
+        name: 'AskUserQuestion',
+        status: 'running',
+        input: {
+          questions: [{
+            question: 'Title timing?',
+            options: [
+              { label: 'Non-blocking', description: 'Generate title later.' },
+              { label: 'Blocking', description: 'Wait for title first.' },
+            ],
+            multiSelect: true,
+          }],
+        },
+      });
+
+      const toolEl = renderStoredToolCall(parentEl, toolCall);
+      const labelEls = toolEl.querySelectorAll('.claudian-ask-item-label');
+      const descEls = toolEl.querySelectorAll('.claudian-ask-item-desc');
+      const checkEls = toolEl.querySelectorAll('.claudian-ask-check');
+
+      expect(Array.from(labelEls, el => el.textContent)).toEqual(['Non-blocking', 'Blocking']);
+      expect(Array.from(descEls, el => el.textContent)).toEqual(['Generate title later.', 'Wait for title first.']);
+      expect(checkEls).toHaveLength(2);
+    });
   });
 
   describe('updateToolCallResult', () => {
@@ -147,8 +190,8 @@ describe('ToolCallRenderer', () => {
 
       updateToolCallResult('ask-1', toolCall, toolCallElements);
 
-      const resultText = toolEl.querySelector('.claudian-tool-result-text');
-      expect(resultText?.textContent).toBe('Answer submitted successfully.');
+      const promptEl = toolEl.querySelector('.claudian-ask-review-prompt');
+      expect(promptEl?.textContent).toBe('Answer submitted successfully.');
     });
   });
 
@@ -213,6 +256,13 @@ describe('ToolCallRenderer', () => {
 
       const longQuery = 'q'.repeat(50);
       expect(getToolLabel('WebSearch', { query: longQuery })).toBe(`WebSearch: ${'q'.repeat(40)}...`);
+    });
+
+    it('should label WebSearch open_page actions with the URL', () => {
+      expect(getToolLabel('WebSearch', {
+        actionType: 'open_page',
+        url: 'https://example.com/docs',
+      })).toBe('WebSearch: Open https://example.com/docs');
     });
 
     it('should label WebFetch and truncate long URLs', () => {
@@ -316,6 +366,14 @@ describe('ToolCallRenderer', () => {
 
     it('should return query for WebSearch', () => {
       expect(getToolSummary('WebSearch', { query: 'test query' })).toBe('test query');
+    });
+
+    it('should summarize WebSearch find_in_page actions', () => {
+      expect(getToolSummary('WebSearch', {
+        actionType: 'find_in_page',
+        url: 'https://example.com/docs',
+        pattern: 'tools',
+      })).toBe('Find "tools" in https://example.com/docs');
     });
 
     it('should return url for WebFetch', () => {
@@ -449,6 +507,97 @@ describe('ToolCallRenderer', () => {
 
     it('returns raw name for lifecycle tools with no summary', () => {
       expect(getToolLabel('close_agent', {})).toBe('close_agent');
+    });
+  });
+
+  describe('WebSearch expanded rendering', () => {
+    it('renders Codex search actions instead of the placeholder result text', () => {
+      const parentEl = createMockEl();
+      const toolCall = createToolCall({
+        name: 'WebSearch',
+        status: 'completed',
+        input: {
+          actionType: 'search',
+          query: 'obsidian plugin API',
+          queries: ['obsidian plugin API', 'obsidian docs'],
+        },
+        result: 'Search complete',
+      });
+
+      const toolEl = renderStoredToolCall(parentEl, toolCall);
+      const lines = Array.from(toolEl.querySelectorAll('.claudian-tool-line')).map(line => line.textContent);
+
+      expect(lines).toContain('Query: obsidian plugin API');
+      expect(lines).toContain('Alt query: obsidian docs');
+      expect(lines).not.toContain('Search complete');
+    });
+
+    it('renders Codex open_page actions from tool input even without a rich result body', () => {
+      const parentEl = createMockEl();
+      const toolCall = createToolCall({
+        name: 'WebSearch',
+        status: 'completed',
+        input: {
+          actionType: 'open_page',
+          url: 'https://example.com/docs',
+        },
+        result: 'Search complete',
+      });
+
+      const toolEl = renderStoredToolCall(parentEl, toolCall);
+      const links = toolEl.querySelectorAll('.claudian-tool-link');
+      const lines = Array.from(toolEl.querySelectorAll('.claudian-tool-line')).map(line => line.textContent);
+
+      expect(lines).toContain('Open page');
+      expect(links).toHaveLength(1);
+      expect(links[0].getAttribute('href')).toBe('https://example.com/docs');
+      expect(links[0].querySelector('.claudian-tool-link-title')?.textContent).toBe('https://example.com/docs');
+    });
+  });
+
+  describe('apply_patch expanded rendering', () => {
+    it('renders parsed patch diffs from tool input', () => {
+      const parentEl = createMockEl();
+      const toolCall = createToolCall({
+        name: 'apply_patch',
+        status: 'completed',
+        input: {
+          patch: [
+            '*** Begin Patch',
+            '*** Update File: src/main.ts',
+            '@@',
+            "-import { Plugin } from 'obsidian';",
+            "+import { Plugin, Notice } from 'obsidian';",
+            '*** End Patch',
+          ].join('\n'),
+        },
+        result: 'Applied patch',
+      });
+
+      const toolEl = renderStoredToolCall(parentEl, toolCall);
+      const headers = Array.from(toolEl.querySelectorAll('.claudian-tool-patch-header')).map(el => el.textContent);
+      const diffTexts = Array.from(toolEl.querySelectorAll('.claudian-diff-text')).map(el => el.textContent);
+
+      expect(headers).toContain('update: src/main.ts (+1 -1)');
+      expect(diffTexts).toContain("import { Plugin } from 'obsidian';");
+      expect(diffTexts).toContain("import { Plugin, Notice } from 'obsidian';");
+    });
+
+    it('falls back to file changes when patch text is unavailable', () => {
+      const parentEl = createMockEl();
+      const toolCall = createToolCall({
+        name: 'apply_patch',
+        status: 'completed',
+        input: {
+          changes: [{ path: 'src/main.ts', kind: 'update' }],
+        },
+        result: 'Applied patch',
+      });
+
+      const toolEl = renderStoredToolCall(parentEl, toolCall);
+      const lines = Array.from(toolEl.querySelectorAll('.claudian-tool-line')).map(el => el.textContent);
+
+      expect(lines).toContain('update: src/main.ts');
     });
   });
 

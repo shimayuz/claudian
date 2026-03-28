@@ -15,19 +15,19 @@ import type {
   Options,
 } from '@anthropic-ai/claude-agent-sdk';
 
-import type { McpServerManager } from '../../../core/mcp';
+import type { McpServerManager } from '../../../core/mcp/McpServerManager';
 import {
   buildSystemPrompt,
   computeSystemPromptKey,
   type SystemPromptSettings,
-} from '../../../core/prompt';
-import type { AppPluginManager } from '../../../core/providers';
+} from '../../../core/prompt/mainAgent';
+import type { AppPluginManager } from '../../../core/providers/types';
 import type { ClaudianSettings, PermissionMode } from '../../../core/types/settings';
 import {
   type EffortLevel,
   isAdaptiveThinkingModel,
   THINKING_BUDGETS,
-} from '../types';
+} from '../types/models';
 import { createCustomSpawnFunction } from './customSpawn';
 import {
   DISABLED_BUILTIN_SUBAGENTS,

@@ -4,8 +4,8 @@ import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import type { App, Editor, MarkdownView } from 'obsidian';
 import { Notice } from 'obsidian';
 
-import { DEFAULT_CHAT_PROVIDER_ID, type InlineEditMode, type InlineEditService } from '../../../core/providers';
-import { ProviderRegistry } from '../../../core/providers';
+import { ProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import { DEFAULT_CHAT_PROVIDER_ID, type InlineEditMode, type InlineEditService } from '../../../core/providers/types';
 import type ClaudianPlugin from '../../../main';
 import { hideSelectionHighlight, showSelectionHighlight } from '../../../shared/components/SelectionHighlight';
 import { SlashCommandDropdown } from '../../../shared/components/SlashCommandDropdown';

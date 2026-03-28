@@ -15,49 +15,9 @@ import type {
   SessionMetadata,
 } from '../../../core/types';
 import type { SubagentInfo } from '../../../core/types/tools';
-import type { ClaudeProviderState } from '../types';
 
 /** Path to sessions folder relative to vault root. */
 export const SESSIONS_PATH = '.claude/sessions';
-
-/** Legacy metadata shape before providerId/providerState migration. */
-interface LegacySessionMetadata {
-  providerSessionId?: string;
-  previousProviderSessionIds?: string[];
-  forkSource?: { sessionId: string; resumeAt: string };
-  subagentData?: Record<string, SubagentInfo>;
-}
-
-/**
- * Migrates legacy Claude-specific top-level fields into providerState.
- * Returns the metadata with providerId defaulted and legacy fields folded.
- */
-function migrateMetadata(raw: SessionMetadata & LegacySessionMetadata): SessionMetadata {
-  if (!raw.providerId) {
-    raw.providerId = DEFAULT_CHAT_PROVIDER_ID;
-  }
-
-  // Fold legacy top-level Claude fields into providerState
-  if (!raw.providerState) {
-    const legacy: ClaudeProviderState = {};
-    if (raw.providerSessionId !== undefined) legacy.providerSessionId = raw.providerSessionId;
-    if (raw.previousProviderSessionIds) legacy.previousProviderSessionIds = raw.previousProviderSessionIds;
-    if (raw.forkSource) legacy.forkSource = raw.forkSource;
-    if (raw.subagentData) legacy.subagentData = raw.subagentData;
-
-    if (Object.keys(legacy).length > 0) {
-      raw.providerState = legacy as Record<string, unknown>;
-    }
-  }
-
-  // Clean legacy fields from the object
-  delete raw.providerSessionId;
-  delete raw.previousProviderSessionIds;
-  delete raw.forkSource;
-  delete raw.subagentData;
-
-  return raw;
-}
 
 export class SessionStorage {
   constructor(private adapter: VaultFileAdapter) { }
@@ -81,8 +41,8 @@ export class SessionStorage {
       }
 
       const content = await this.adapter.read(filePath);
-      const raw = JSON.parse(content) as SessionMetadata & LegacySessionMetadata;
-      return migrateMetadata(raw);
+      const raw = JSON.parse(content) as SessionMetadata;
+      return raw;
     } catch {
       return null;
     }
@@ -104,8 +64,8 @@ export class SessionStorage {
       for (const filePath of metaFiles) {
         try {
           const content = await this.adapter.read(filePath);
-          const raw = JSON.parse(content) as SessionMetadata & LegacySessionMetadata;
-          metas.push(migrateMetadata(raw));
+          const raw = JSON.parse(content) as SessionMetadata;
+          metas.push(raw);
         } catch {
           // Skip files that fail to load
         }

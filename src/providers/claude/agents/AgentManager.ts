@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { AgentDefinition } from '../../../core/types';
-import type { PluginManager } from '../plugins';
+import type { PluginManager } from '../plugins/PluginManager';
 import { buildAgentFromFrontmatter, parseAgentFile } from './AgentStorage';
 
 const GLOBAL_AGENTS_DIR = path.join(os.homedir(), '.claude', 'agents');

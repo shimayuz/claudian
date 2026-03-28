@@ -4,7 +4,7 @@ import type { SDKToolUseResult, UsageInfo } from '../../../core/types';
 import { isBlockedMessage } from '../sdk/messages';
 import { extractToolResultContent } from '../sdk/toolResultContent';
 import type { TransformEvent } from '../sdk/types';
-import { getContextWindowSize } from '../types';
+import { getContextWindowSize } from '../types/models';
 
 export interface TransformOptions {
   /** The intended model from settings/query (used for context window size). */

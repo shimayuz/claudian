@@ -218,12 +218,9 @@ describe('ModelSelector', () => {
     expect(callbacks.onModelChange).toHaveBeenCalledWith('opus');
   });
 
-  it('should update display when setReady is called', () => {
-    selector.setReady(true);
+  it('should always show brand color on model button', () => {
     const btn = parentEl.querySelector('.claudian-model-btn');
-    expect(btn?.hasClass('ready')).toBe(true);
-
-    selector.setReady(false);
+    expect(btn).toBeTruthy();
     expect(btn?.hasClass('ready')).toBe(false);
   });
 
@@ -262,6 +259,42 @@ describe('ModelSelector', () => {
 
     const label = parentEl.querySelector('.claudian-model-label');
     expect(label?.textContent).toBe('Opus');
+  });
+
+  it('should render group separators when models have group field', () => {
+    const groupedModels = [
+      { value: 'opus', label: 'Opus', group: 'Claude' },
+      { value: 'sonnet', label: 'Sonnet', group: 'Claude' },
+      { value: 'gpt-5.4', label: 'GPT-5.4', group: 'Codex' },
+    ];
+    const uiConfig = createMockUIConfig();
+    uiConfig.getModelOptions.mockReturnValue(groupedModels);
+    callbacks.getUIConfig.mockReturnValue(uiConfig);
+    callbacks.getSettings.mockReturnValue({
+      model: 'sonnet',
+      thinkingBudget: 'low',
+      effortLevel: 'high',
+      permissionMode: 'normal',
+    });
+
+    selector.renderOptions();
+
+    const dropdown = parentEl.querySelector('.claudian-model-dropdown');
+    const children = dropdown?.children || [];
+    // Reversed: [Codex group, gpt-5.4, Claude group, Sonnet, Opus]
+    const groups = children.filter((c: any) => c.hasClass('claudian-model-group'));
+    expect(groups.length).toBe(2);
+    expect(groups[0]?.textContent).toBe('Codex');
+    expect(groups[1]?.textContent).toBe('Claude');
+  });
+
+  it('should not render group separators when models have no group field', () => {
+    selector.renderOptions();
+
+    const dropdown = parentEl.querySelector('.claudian-model-dropdown');
+    const children = dropdown?.children || [];
+    const groups = children.filter((c: any) => c.hasClass('claudian-model-group'));
+    expect(groups.length).toBe(0);
   });
 
   it('should show 1M variants instead of standard variants when enabled', () => {

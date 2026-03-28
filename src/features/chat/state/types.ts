@@ -1,7 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 
-import type { ChatRuntimeQueryOptions } from '../../../core/runtime';
-import type { TodoItem } from '../../../core/tools';
+import type { ChatRuntimeQueryOptions } from '../../../core/runtime/types';
+import type { TodoItem } from '../../../core/tools/todo';
 import type {
   ChatMessage,
   ImageAttachment,
@@ -12,10 +12,8 @@ import type {
 import type { BrowserSelectionContext } from '../../../utils/browser';
 import type { CanvasSelectionContext } from '../../../utils/canvas';
 import type { EditorSelectionContext } from '../../../utils/editor';
-import type {
-  ThinkingBlockState,
-  WriteEditState,
-} from '../rendering';
+import type { ThinkingBlockState } from '../rendering/ThinkingBlockRenderer';
+import type { WriteEditState } from '../rendering/WriteEditRenderer';
 
 /** Queued message waiting to be sent after current streaming completes. */
 export interface QueuedMessage {

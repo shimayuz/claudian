@@ -1,4 +1,4 @@
-import type { ProviderId, ProviderRegistration } from '../core/providers';
+import type { ProviderId, ProviderRegistration } from '../core/providers/types';
 import { claudeProviderRegistration } from './claude/registration';
 import { codexProviderRegistration } from './codex/registration';
 

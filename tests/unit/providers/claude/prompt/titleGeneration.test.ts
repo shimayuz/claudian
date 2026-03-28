@@ -1,4 +1,4 @@
-import { TITLE_GENERATION_SYSTEM_PROMPT } from '@/core/prompt';
+import { TITLE_GENERATION_SYSTEM_PROMPT } from '@/core/prompt/titleGeneration';
 
 describe('titleGeneration', () => {
   it('exports a non-empty system prompt string', () => {

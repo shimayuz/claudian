@@ -266,13 +266,28 @@ describe('mapEventMsgEvent', () => {
   });
 
   describe('token_count', () => {
-    it('stores pending usage in state', () => {
+    it('reads input_tokens from real SDK format', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const payload = {
+        type: 'token_count',
+        info: {
+          last_token_usage: { input_tokens: 13140, cached_input_tokens: 3456, output_tokens: 323 },
+        },
+      };
+      const chunks = mapEventMsgEvent(payload, 'sess-1', state);
+      expect(chunks).toEqual([]);
+      expect(state.pendingUsageByTurn.get('turn-1')).toEqual({
+        contextTokens: 13140,
+        contextWindow: 200_000,
+      });
+    });
+
+    it('falls back to input field for backwards compatibility', () => {
       const state = makeState({ currentTurnId: 'turn-1' });
       const payload = {
         type: 'token_count',
         info: {
           last_token_usage: { input: 100, output: 50 },
-          model_context_window: 200_000,
         },
       };
       const chunks = mapEventMsgEvent(payload, 'sess-1', state);
@@ -281,6 +296,126 @@ describe('mapEventMsgEvent', () => {
         contextTokens: 100,
         contextWindow: 200_000,
       });
+    });
+
+    it('uses modelContextWindow from task_started', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+
+      // Simulate task_started setting context window
+      mapEventMsgEvent({ type: 'task_started', turn_id: 'turn-1', model_context_window: 258400 }, 'sess-1', state);
+
+      const payload = {
+        type: 'token_count',
+        info: {
+          last_token_usage: { input_tokens: 500 },
+        },
+      };
+      mapEventMsgEvent(payload, 'sess-1', state);
+      expect(state.pendingUsageByTurn.get('turn-1')).toEqual({
+        contextTokens: 500,
+        contextWindow: 258400,
+      });
+    });
+  });
+
+  describe('task_started with model_context_window', () => {
+    it('captures model_context_window into state', () => {
+      const state = makeState();
+      mapEventMsgEvent({ type: 'task_started', turn_id: 'turn-1', model_context_window: 258400 }, 'sess-1', state);
+      expect(state.modelContextWindow).toBe(258400);
+    });
+
+    it('preserves default when model_context_window is absent', () => {
+      const state = makeState();
+      mapEventMsgEvent({ type: 'task_started', turn_id: 'turn-1' }, 'sess-1', state);
+      expect(state.modelContextWindow).toBe(200_000);
+    });
+  });
+
+  describe('exec_command_end', () => {
+    it('stores exit_code in callEnrichment', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      mapEventMsgEvent({
+        type: 'exec_command_end',
+        call_id: 'call-1',
+        exit_code: 0,
+        aggregated_output: 'ok',
+      }, 'sess-1', state);
+      expect(state.callEnrichment.get('call-1')).toEqual({ exitCode: 0 });
+    });
+
+    it('stores non-zero exit_code', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      mapEventMsgEvent({
+        type: 'exec_command_end',
+        call_id: 'call-2',
+        exit_code: 1,
+      }, 'sess-1', state);
+      expect(state.callEnrichment.get('call-2')).toEqual({ exitCode: 1 });
+    });
+  });
+
+  describe('patch_apply_end', () => {
+    it('stores exitCode=1 on failure', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      mapEventMsgEvent({
+        type: 'patch_apply_end',
+        call_id: 'call-p1',
+        success: false,
+      }, 'sess-1', state);
+      expect(state.callEnrichment.get('call-p1')).toEqual({ exitCode: 1 });
+    });
+
+    it('does not enrich on success', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      mapEventMsgEvent({
+        type: 'patch_apply_end',
+        call_id: 'call-p2',
+        success: true,
+      }, 'sess-1', state);
+      expect(state.callEnrichment.has('call-p2')).toBe(false);
+    });
+  });
+
+  describe('mcp_tool_call_end', () => {
+    it('stores MCP server and tool in enrichment', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      mapEventMsgEvent({
+        type: 'mcp_tool_call_end',
+        call_id: 'call-mcp',
+        invocation: { server: 'codex', tool: 'list_mcp_resources', arguments: {} },
+      }, 'sess-1', state);
+      expect(state.callEnrichment.get('call-mcp')).toMatchObject({
+        mcpServer: 'codex',
+        mcpTool: 'list_mcp_resources',
+      });
+    });
+
+    it('updates known call name to MCP-prefixed form', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      // Simulate function_call having already registered the known call
+      state.responseItemState.knownCalls.set('call-mcp', { toolName: 'list_mcp_resources', toolInput: {} });
+
+      mapEventMsgEvent({
+        type: 'mcp_tool_call_end',
+        call_id: 'call-mcp',
+        invocation: { server: 'codex', tool: 'list_mcp_resources', arguments: {} },
+      }, 'sess-1', state);
+      expect(state.responseItemState.knownCalls.get('call-mcp')?.toolName).toBe('mcp__codex__list_mcp_resources');
+    });
+  });
+
+  describe('known event_msg types return empty without warnings', () => {
+    it.each([
+      'web_search_end',
+      'view_image_tool_call',
+      'collab_agent_spawn_end',
+      'collab_waiting_end',
+      'collab_close_end',
+    ])('handles %s silently', (type) => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const chunks = mapEventMsgEvent({ type, call_id: 'some-id' }, 'sess-1', state);
+      expect(chunks).toEqual([]);
     });
   });
 });
@@ -349,6 +484,29 @@ describe('mapResponseItemEvent', () => {
         name: 'apply_patch',
       });
     });
+
+    it('normalizes raw apply_patch input strings into patch text', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const event = {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          call_id: 'call-raw-patch',
+          name: 'apply_patch',
+          input: '*** Begin Patch\n*** Update File: src/main.ts\n*** End Patch',
+        },
+      };
+      const chunks = mapResponseItemEvent(event, 'sess-1', 0, state);
+      const toolUse = chunks.find(c => c.type === 'tool_use');
+      expect(toolUse).toMatchObject({
+        type: 'tool_use',
+        id: 'call-raw-patch',
+        name: 'apply_patch',
+        input: {
+          patch: '*** Begin Patch\n*** Update File: src/main.ts\n*** End Patch',
+        },
+      });
+    });
   });
 
   describe('web_search_call', () => {
@@ -368,7 +526,27 @@ describe('mapResponseItemEvent', () => {
         type: 'tool_use',
         id: 'ws-1',
         name: 'WebSearch',
-        input: { query: 'obsidian' },
+        input: { actionType: 'search', query: 'obsidian' },
+      });
+    });
+
+    it('preserves open_page actions in tool input', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const event = {
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          call_id: 'ws-open',
+          action: { type: 'open_page', url: 'https://example.com/docs' },
+        },
+      };
+      const chunks = mapResponseItemEvent(event, 'sess-1', 0, state);
+      const toolUse = chunks.find(c => c.type === 'tool_use');
+      expect(toolUse).toMatchObject({
+        type: 'tool_use',
+        id: 'ws-open',
+        name: 'WebSearch',
+        input: { actionType: 'open_page', url: 'https://example.com/docs' },
       });
     });
   });
@@ -439,6 +617,285 @@ describe('mapResponseItemEvent', () => {
         id: 'call-ct-out',
         content: 'Applied changes',
       });
+    });
+  });
+
+  describe('web_search_call with status', () => {
+    it('emits both tool_use and tool_result when status is completed', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const event = {
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          status: 'completed',
+          action: { type: 'search', query: 'site:openai.com OpenAI' },
+        },
+      };
+      const chunks = mapResponseItemEvent(event, 'sess-1', 0, state);
+      expect(chunks).toHaveLength(2);
+      expect(chunks[0]).toMatchObject({
+        type: 'tool_use',
+        name: 'WebSearch',
+        input: { actionType: 'search', query: 'site:openai.com OpenAI' },
+      });
+      expect(chunks[1]).toMatchObject({ type: 'tool_result', content: 'Search complete', isError: false });
+    });
+
+    it('emits tool_result with isError for failed search', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const event = {
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          status: 'failed',
+          action: { query: 'bad query' },
+        },
+      };
+      const chunks = mapResponseItemEvent(event, 'sess-1', 0, state);
+      expect(chunks).toHaveLength(2);
+      expect(chunks[1]).toMatchObject({ type: 'tool_result', isError: true });
+    });
+
+    it('emits only tool_use when no status', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const event = {
+        type: 'response_item',
+        payload: {
+          type: 'web_search_call',
+          action: { query: 'test' },
+        },
+      };
+      const chunks = mapResponseItemEvent(event, 'sess-1', 0, state);
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0].type).toBe('tool_use');
+    });
+  });
+
+  describe('function_call_output with image array', () => {
+    it('extracts file_path from known call for image output', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      // First emit the view_image tool_use
+      mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'call-img',
+          name: 'view_image',
+          arguments: '{"path":"/tmp/image.png"}',
+        },
+      }, 'sess-1', 0, state);
+
+      // Then emit function_call_output with array (image data)
+      const chunks = mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call-img',
+          output: [{ type: 'input_image', image_url: 'data:image/png;base64,abc123' }],
+        },
+      }, 'sess-1', 1, state);
+
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toMatchObject({
+        type: 'tool_result',
+        id: 'call-img',
+        content: '/tmp/image.png',
+        isError: false,
+      });
+    });
+
+    it('falls back to "Image loaded" when no known call', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const chunks = mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call-img-unknown',
+          output: [{ type: 'input_image', image_url: 'data:image/png;base64,abc' }],
+        },
+      }, 'sess-1', 0, state);
+
+      expect(chunks[0]).toMatchObject({
+        type: 'tool_result',
+        content: 'Image loaded',
+        isError: false,
+      });
+    });
+  });
+
+  describe('enrichment-based isError', () => {
+    it('uses exec_command_end exit_code over regex detection', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+
+      // Emit tool_use
+      mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'call-err',
+          name: 'exec_command',
+          arguments: '{"command":"ls"}',
+        },
+      }, 'sess-1', 0, state);
+
+      // exec_command_end arrives with exit_code=1
+      mapEventMsgEvent({
+        type: 'exec_command_end',
+        call_id: 'call-err',
+        exit_code: 1,
+      }, 'sess-1', state);
+
+      // function_call_output without exit code pattern in text
+      const chunks = mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call-err',
+          output: 'some output without exit code pattern',
+        },
+      }, 'sess-1', 2, state);
+
+      expect(chunks[0]).toMatchObject({ type: 'tool_result', isError: true });
+    });
+
+    it('uses exit_code=0 enrichment to suppress false positive', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+
+      mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'call-ok',
+          name: 'exec_command',
+          arguments: '{"command":"echo error:"}',
+        },
+      }, 'sess-1', 0, state);
+
+      // exit_code=0 from enrichment
+      mapEventMsgEvent({
+        type: 'exec_command_end',
+        call_id: 'call-ok',
+        exit_code: 0,
+      }, 'sess-1', state);
+
+      // Output would trigger regex false-positive (starts with "error:")
+      const chunks = mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call-ok',
+          output: 'error: this is actually fine',
+        },
+      }, 'sess-1', 2, state);
+
+      expect(chunks[0]).toMatchObject({ type: 'tool_result', isError: false });
+    });
+  });
+
+  describe('MCP tool name enrichment', () => {
+    it('uses MCP-prefixed name when mcp_tool_call_end arrives after function_call', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+
+      // function_call arrives first
+      mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          call_id: 'call-mcp-1',
+          name: 'list_mcp_resources',
+          arguments: '{}',
+        },
+      }, 'sess-1', 0, state);
+
+      // mcp_tool_call_end updates the known call
+      mapEventMsgEvent({
+        type: 'mcp_tool_call_end',
+        call_id: 'call-mcp-1',
+        invocation: { server: 'codex', tool: 'list_mcp_resources', arguments: {} },
+      }, 'sess-1', state);
+
+      // function_call_output uses the updated name
+      mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call-mcp-1',
+          output: '{"resources":[]}',
+        },
+      }, 'sess-1', 2, state);
+
+      // tool_result should know the MCP name (used for normalization routing)
+      const known = state.responseItemState.knownCalls.get('call-mcp-1');
+      expect(known?.toolName).toBe('mcp__codex__list_mcp_resources');
+    });
+  });
+
+  describe('mcp_tool_call', () => {
+    it('emits tool_use and tool_result from a persisted MCP response item', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const chunks = mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'mcp_tool_call',
+          call_id: 'call-mcp-ri',
+          server: 'filesystem',
+          tool: 'read_file',
+          status: 'completed',
+          arguments: '{"path":"README.md"}',
+          result: {
+            content: [
+              { type: 'text', text: 'line 1' },
+              { type: 'text', text: 'line 2' },
+            ],
+          },
+        },
+      }, 'sess-1', 0, state);
+
+      expect(chunks).toEqual([
+        {
+          type: 'tool_use',
+          id: 'call-mcp-ri',
+          name: 'mcp__filesystem__read_file',
+          input: { path: 'README.md' },
+        },
+        {
+          type: 'tool_result',
+          id: 'call-mcp-ri',
+          content: 'line 1\nline 2',
+          isError: false,
+        },
+      ]);
+    });
+
+    it('emits MCP errors with normalized object arguments', () => {
+      const state = makeState({ currentTurnId: 'turn-1' });
+      const chunks = mapResponseItemEvent({
+        type: 'response_item',
+        payload: {
+          type: 'mcp_tool_call',
+          call_id: 'call-mcp-ri-error',
+          server: 'filesystem',
+          tool: 'write_file',
+          status: 'failed',
+          arguments: { path: 'README.md' },
+          error: 'Permission denied',
+        },
+      }, 'sess-1', 0, state);
+
+      expect(chunks).toEqual([
+        {
+          type: 'tool_use',
+          id: 'call-mcp-ri-error',
+          name: 'mcp__filesystem__write_file',
+          input: { path: 'README.md' },
+        },
+        {
+          type: 'tool_result',
+          id: 'call-mcp-ri-error',
+          content: 'Permission denied',
+          isError: true,
+        },
+      ]);
     });
   });
 

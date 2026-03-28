@@ -286,6 +286,32 @@ describe('CodexHistoryStore', () => {
       expect(patchTool!.status).toBe('completed');
     });
 
+    it('restores raw custom_tool_call apply_patch input as patch text', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_started' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'custom_tool_call',
+            name: 'apply_patch',
+            call_id: 'call_patch_raw',
+            input: '*** Begin Patch\n*** Update File: src/main.ts\n*** End Patch',
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const patchTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'apply_patch');
+      expect(patchTool).toBeDefined();
+      expect(patchTool!.input.patch).toBe('*** Begin Patch\n*** Update File: src/main.ts\n*** End Patch');
+    });
+
     it('restores update_plan as TodoWrite', () => {
       const filePath = path.join(FIXTURES_DIR, 'codex-session-persisted-tools.jsonl');
       const messages = parseCodexSessionFile(filePath);
@@ -310,6 +336,48 @@ describe('CodexHistoryStore', () => {
       expect(askTool!.id).toBe('call_ask_1');
       expect(askTool!.input.questions).toEqual([
         expect.objectContaining({ question: 'Should I also update the tests?', id: 'q1' }),
+      ]);
+    });
+
+    it('restores request_user_input options and multi-select metadata', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'function_call',
+            name: 'request_user_input',
+            call_id: 'call_ask_opts',
+            arguments: JSON.stringify({
+              questions: [{
+                id: 'title_generation_timing',
+                question: 'When should I generate the title?',
+                options: [
+                  { label: 'Non-blocking', description: 'Generate it later.' },
+                  { label: 'Blocking', description: 'Wait before continuing.' },
+                ],
+                multi_select: true,
+              }],
+            }),
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const askTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'AskUserQuestion');
+
+      expect(askTool!.input.questions).toEqual([
+        {
+          id: 'title_generation_timing',
+          question: 'When should I generate the title?',
+          header: 'Q1',
+          options: [
+            { label: 'Non-blocking', description: 'Generate it later.' },
+            { label: 'Blocking', description: 'Wait before continuing.' },
+          ],
+          multiSelect: true,
+        },
       ]);
     });
 
@@ -590,8 +658,54 @@ describe('CodexHistoryStore', () => {
       const searchTool = assistantMsg!.toolCalls!.find(tc => tc.name === 'WebSearch');
       expect(searchTool).toBeDefined();
       expect(searchTool!.id).toBe('call_ws_1');
+      expect(searchTool!.input.actionType).toBe('search');
       expect(searchTool!.input.query).toBe('obsidian plugin API');
       expect(searchTool!.status).toBe('completed');
+    });
+
+    it('keeps distinct persisted web_search_call entries when call_id is missing', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'event_msg',
+          payload: { type: 'task_started' },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:01.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'web_search_call',
+            status: 'completed',
+            action: { type: 'search', query: 'obsidian plugin API' },
+          },
+        }),
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:02.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'web_search_call',
+            status: 'completed',
+            action: { type: 'open_page', url: 'https://docs.obsidian.md' },
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+      const assistantMsg = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      expect(assistantMsg).toBeDefined();
+
+      const webSearchTools = assistantMsg!.toolCalls!.filter(tc => tc.name === 'WebSearch');
+      expect(webSearchTools).toHaveLength(2);
+      expect(webSearchTools[0]).toMatchObject({
+        id: 'tail-ws-1',
+        input: { actionType: 'search', query: 'obsidian plugin API' },
+        result: 'Search complete',
+      });
+      expect(webSearchTools[1]).toMatchObject({
+        id: 'tail-ws-2',
+        input: { actionType: 'open_page', url: 'https://docs.obsidian.md' },
+        result: 'Search complete',
+      });
     });
   });
 
@@ -937,7 +1051,7 @@ describe('CodexHistoryStore', () => {
 
       const tc = assistantMsg!.toolCalls!.find(t => t.id === 'call_img_1');
       expect(tc!.status).toBe('completed');
-      expect(typeof tc!.result).toBe('string');
+      expect(tc!.result).toBe('/tmp/cat.png');
     });
   });
 
@@ -1112,6 +1226,69 @@ describe('CodexHistoryStore', () => {
       expect(mcpTool).toBeDefined();
       expect(mcpTool!.id).toBe('call_mcp_1');
       expect(mcpTool!.status).toBe('completed');
+    });
+
+    it('preserves MCP arguments and structured result text', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'mcp_tool_call',
+            server: 'filesystem',
+            tool: 'read_file',
+            call_id: 'call_mcp_2',
+            status: 'completed',
+            arguments: { path: 'README.md' },
+            result: {
+              content: [
+                { type: 'text', text: 'line 1' },
+                { type: 'text', text: 'line 2' },
+              ],
+            },
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+      const assistant = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const mcpTool = assistant!.toolCalls!.find(tc => tc.id === 'call_mcp_2');
+
+      expect(mcpTool).toMatchObject({
+        name: 'mcp__filesystem__read_file',
+        input: { path: 'README.md' },
+        status: 'completed',
+        result: 'line 1\nline 2',
+      });
+    });
+
+    it('preserves MCP error output', () => {
+      const content = [
+        JSON.stringify({
+          timestamp: '2026-03-27T00:00:00.000Z',
+          type: 'response_item',
+          payload: {
+            type: 'mcp_tool_call',
+            server: 'filesystem',
+            tool: 'write_file',
+            call_id: 'call_mcp_3',
+            status: 'failed',
+            arguments: '{"path":"README.md"}',
+            error: 'Permission denied',
+          },
+        }),
+      ].join('\n');
+
+      const messages = parseCodexSessionContent(content);
+      const assistant = messages.find(m => m.role === 'assistant' && m.toolCalls);
+      const mcpTool = assistant!.toolCalls!.find(tc => tc.id === 'call_mcp_3');
+
+      expect(mcpTool).toMatchObject({
+        name: 'mcp__filesystem__write_file',
+        input: { path: 'README.md' },
+        status: 'error',
+        result: 'Permission denied',
+      });
     });
   });
 });

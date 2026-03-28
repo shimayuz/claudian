@@ -1,7 +1,7 @@
 import * as sdkModule from '@anthropic-ai/claude-agent-sdk';
 import { Notice } from 'obsidian';
 
-import type { McpServerManager } from '@/core/mcp';
+import type { McpServerManager } from '@/core/mcp/McpServerManager';
 import type ClaudianPlugin from '@/main';
 import { ClaudianService } from '@/providers/claude/runtime/ClaudeChatRuntime';
 import { MessageChannel } from '@/providers/claude/runtime/ClaudeMessageChannel';

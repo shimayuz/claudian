@@ -1,11 +1,14 @@
 import type { EventRef, WorkspaceLeaf } from 'obsidian';
 import { ItemView, Notice, Scope, setIcon } from 'obsidian';
 
-import { ProviderRegistry, ProviderSettingsCoordinator } from '../../core/providers';
+import { ProviderRegistry } from '../../core/providers/ProviderRegistry';
+import { ProviderSettingsCoordinator } from '../../core/providers/ProviderSettingsCoordinator';
+import type { ProviderId } from '../../core/providers/types';
 import { VIEW_TYPE_CLAUDIAN } from '../../core/types';
 import type ClaudianPlugin from '../../main';
-import { LOGO_SVG } from './constants';
-import { getTabProviderId, onCodexAvailabilityChanged, TabBar, TabManager, updatePlanModeUI } from './tabs';
+import { getTabProviderId, onCodexAvailabilityChanged, updatePlanModeUI } from './tabs/Tab';
+import { TabBar } from './tabs/TabBar';
+import { TabManager } from './tabs/TabManager';
 import type { TabData, TabId } from './tabs/types';
 
 export class ClaudianView extends ItemView {
@@ -164,12 +167,14 @@ export class ClaudianView extends ItemView {
           this.updateTabBar();
           this.updateNavRowLocation();
           this.persistTabState();
+          this.syncProviderBrandColor();
         },
         onTabSwitched: () => {
           this.updateTabBar();
           this.updateHistoryDropdown();
           this.updateNavRowLocation();
           this.persistTabState();
+          this.syncProviderBrandColor();
         },
         onTabClosed: () => {
           this.updateTabBar();
@@ -180,6 +185,10 @@ export class ClaudianView extends ItemView {
         onTabAttentionChanged: () => this.updateTabBar(),
         onTabConversationChanged: () => {
           this.persistTabState();
+          this.syncProviderBrandColor();
+        },
+        onTabProviderChanged: () => {
+          this.syncProviderBrandColor();
         },
       }
     );
@@ -189,6 +198,9 @@ export class ClaudianView extends ItemView {
 
     // Restore tabs from persisted state or create default tab
     await this.restoreOrCreateTabs();
+
+    // Set initial provider brand color
+    this.syncProviderBrandColor();
 
     // Apply initial layout based on tabBarPosition setting
     this.updateLayoutForPosition();
@@ -229,18 +241,9 @@ export class ClaudianView extends ItemView {
     // Title slot container (logo + title or tabs)
     this.titleSlotEl = header.createDiv({ cls: 'claudian-title-slot' });
 
-    // Logo (hidden when 2+ tabs)
+    // Logo (hidden when 2+ tabs) — populated by syncHeaderLogo()
     this.logoEl = this.titleSlotEl.createSpan({ cls: 'claudian-logo' });
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', LOGO_SVG.viewBox);
-    svg.setAttribute('width', LOGO_SVG.width);
-    svg.setAttribute('height', LOGO_SVG.height);
-    svg.setAttribute('fill', 'none');
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', LOGO_SVG.path);
-    path.setAttribute('fill', LOGO_SVG.fill);
-    svg.appendChild(path);
-    this.logoEl.appendChild(svg);
+    this.syncHeaderLogo('claude');
 
     // Title text (hidden in header mode when 2+ tabs)
     this.titleTextEl = this.titleSlotEl.createEl('h4', { text: 'Claudian', cls: 'claudian-title-text' });
@@ -430,6 +433,37 @@ export class ClaudianView extends ItemView {
     }
   }
 
+  /** Sets `data-provider` on the root container so CSS brand color follows the active provider. */
+  private syncProviderBrandColor(): void {
+    if (!this.viewContainerEl) return;
+    const activeTab = this.tabManager?.getActiveTab();
+    const providerId = activeTab ? getTabProviderId(activeTab, this.plugin) : 'claude';
+    this.viewContainerEl.dataset.provider = providerId;
+    this.syncHeaderLogo(providerId);
+  }
+
+  /** Rebuilds the header logo SVG to match the given provider. */
+  private syncHeaderLogo(providerId: ProviderId): void {
+    if (!this.logoEl) return;
+    const icon = ProviderRegistry.getChatUIConfig(providerId).getProviderIcon?.();
+    if (!icon) return;
+    const existing = this.logoEl.querySelector('svg');
+    if (existing?.getAttribute('data-provider') === providerId) return;
+    this.logoEl.empty();
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', icon.viewBox);
+    svg.setAttribute('width', '18');
+    svg.setAttribute('height', '18');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('data-provider', providerId);
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', icon.path);
+    path.setAttribute('fill', 'currentColor');
+    svg.appendChild(path);
+    this.logoEl.appendChild(svg);
+  }
+
   // ============================================
   // History Dropdown
   // ============================================
@@ -576,26 +610,11 @@ export class ClaudianView extends ItemView {
     const persistedState = await this.plugin.storage.getTabManagerState();
     if (persistedState && persistedState.openTabs.length > 0) {
       await this.tabManager.restoreState(persistedState);
-      await this.plugin.storage.clearLegacyActiveConversationId();
-      return;
-    }
-
-    // No persisted state - migrate legacy activeConversationId if present
-    const legacyActiveId = await this.plugin.storage.getLegacyActiveConversationId();
-    if (legacyActiveId) {
-      const conversation = await this.plugin.getConversationById(legacyActiveId);
-      if (conversation) {
-        await this.tabManager.createTab(conversation.id);
-      } else {
-        await this.tabManager.createTab();
-      }
-      await this.plugin.storage.clearLegacyActiveConversationId();
       return;
     }
 
     // Fallback: create a new empty tab
     await this.tabManager.createTab();
-    await this.plugin.storage.clearLegacyActiveConversationId();
   }
 
   private persistTabState(): void {

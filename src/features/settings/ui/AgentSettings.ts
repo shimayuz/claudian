@@ -2,7 +2,7 @@ import type { App } from 'obsidian';
 import { Modal, Notice, setIcon, Setting } from 'obsidian';
 
 import type { AgentDefinition } from '../../../core/types';
-import { t } from '../../../i18n';
+import { t } from '../../../i18n/i18n';
 import type ClaudianPlugin from '../../../main';
 import { confirmDelete } from '../../../shared/modals/ConfirmModal';
 import { validateAgentName } from '../../../utils/agent';

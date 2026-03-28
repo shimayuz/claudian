@@ -1,15 +1,16 @@
 import { Notice } from 'obsidian';
 
-import { detectBuiltInCommand } from '../../../core/commands';
+import { detectBuiltInCommand } from '../../../core/commands/builtInCommands';
+import { ProviderRegistry } from '../../../core/providers/ProviderRegistry';
 import {
   DEFAULT_CHAT_PROVIDER_ID,
   type InstructionRefineService,
   type ProviderCapabilities,
   type ProviderId,
-  ProviderRegistry,
   type TitleGenerationService,
-} from '../../../core/providers';
-import type { ApprovalCallbackOptions, ChatRuntime, ChatTurnRequest } from '../../../core/runtime';
+} from '../../../core/providers/types';
+import type { ChatRuntime } from '../../../core/runtime/ChatRuntime';
+import type { ApprovalCallbackOptions, ChatTurnRequest } from '../../../core/runtime/types';
 import { TOOL_EXIT_PLAN_MODE } from '../../../core/tools/toolNames';
 import type { ApprovalDecision, ChatMessage, ExitPlanModeDecision } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
@@ -27,7 +28,11 @@ import type { MessageRenderer } from '../rendering/MessageRenderer';
 import { setToolIcon, updateToolCallResult } from '../rendering/ToolCallRenderer';
 import type { SubagentManager } from '../services/SubagentManager';
 import type { ChatState } from '../state/ChatState';
-import type { AddExternalContextResult, FileContextManager, ImageContextManager, InstructionModeManager, McpServerSelector, StatusPanel } from '../ui';
+import type { FileContextManager } from '../ui/FileContext';
+import type { ImageContextManager } from '../ui/ImageContext';
+import type { AddExternalContextResult, McpServerSelector } from '../ui/InputToolbar';
+import type { InstructionModeManager } from '../ui/InstructionModeManager';
+import type { StatusPanel } from '../ui/StatusPanel';
 import type { BrowserSelectionController } from './BrowserSelectionController';
 import type { CanvasSelectionController } from './CanvasSelectionController';
 import type { ConversationController } from './ConversationController';
@@ -587,11 +592,6 @@ export class InputController {
       return;
     }
 
-    // Skip AI title generation for non-Claude providers (keep fallback title)
-    if (this.getActiveProviderId() !== 'claude') {
-      return;
-    }
-
     // Fire async AI title generation only if service available
     const titleService = this.deps.getTitleGenerationService();
     if (!titleService) {
@@ -668,9 +668,6 @@ export class InputController {
 
   async handleInstructionSubmit(rawInstruction: string): Promise<void> {
     const { plugin } = this.deps;
-
-    // Instruction refinement is Claude-only
-    if (this.getActiveProviderId() !== 'claude') return;
 
     const instructionRefineService = this.deps.getInstructionRefineService();
     const instructionModeManager = this.deps.getInstructionModeManager();

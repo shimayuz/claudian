@@ -1,6 +1,11 @@
 import { createMockEl } from '@test/helpers/mockElement';
 
-import { TOOL_AGENT_OUTPUT, TOOL_TASK } from '@/core/tools/toolNames';
+import {
+  TOOL_AGENT_OUTPUT,
+  TOOL_CODEX_SPAWN_AGENT,
+  TOOL_CODEX_WAIT_AGENT,
+  TOOL_TASK,
+} from '@/core/tools/toolNames';
 import type { ChatMessage, ImageAttachment } from '@/core/types';
 import { MessageRenderer } from '@/features/chat/rendering/MessageRenderer';
 import { renderStoredAsyncSubagent, renderStoredSubagent } from '@/features/chat/rendering/SubagentRenderer';
@@ -1188,6 +1193,55 @@ describe('MessageRenderer', () => {
           id: 'task-no-desc',
           description: 'Subagent task',
           status: 'completed',
+        })
+      );
+    });
+
+    it('renders Codex spawn_agent with the same prompt and result recovered on reload', () => {
+      const messagesEl = createMockEl();
+      const { renderer } = createRenderer(messagesEl);
+
+      (renderStoredSubagent as jest.Mock).mockClear();
+
+      const msg: ChatMessage = {
+        id: 'm-codex-subagent',
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        toolCalls: [
+          {
+            id: 'spawn-1',
+            name: TOOL_CODEX_SPAWN_AGENT,
+            input: {
+              message: 'Inspect utils.ts and return the final patch summary.',
+              model: 'gpt-5.4-mini',
+            },
+            status: 'completed',
+            result: '{"agent_id":"agent-1","nickname":"Zeno"}',
+          } as any,
+          {
+            id: 'wait-1',
+            name: TOOL_CODEX_WAIT_AGENT,
+            input: { targets: ['agent-1'], timeout_ms: 30000 },
+            status: 'completed',
+            result: '{"status":{"agent-1":{"completed":"Patched utils.ts and verified imports."}},"timed_out":false}',
+          } as any,
+        ],
+        contentBlocks: [
+          { type: 'tool_use', toolId: 'spawn-1' } as any,
+        ],
+      };
+
+      renderer.renderStoredMessage(msg);
+
+      expect(renderStoredSubagent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          id: 'spawn-1',
+          description: 'Zeno (gpt-5.4-mini)',
+          prompt: 'Inspect utils.ts and return the final patch summary.',
+          status: 'completed',
+          result: 'Patched utils.ts and verified imports.',
         })
       );
     });

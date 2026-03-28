@@ -1,8 +1,11 @@
 import { TFile } from 'obsidian';
 
-import type { ChatRuntime } from '../../../core/runtime';
-import { extractResolvedAnswers, extractResolvedAnswersFromResultText, parseTodoInput } from '../../../core/tools';
+import type { ChatRuntime } from '../../../core/runtime/ChatRuntime';
+import { parseTodoInput } from '../../../core/tools/todo';
+import { extractResolvedAnswers, extractResolvedAnswersFromResultText } from '../../../core/tools/toolInput';
 import {
+  isCodexSubagentHiddenTool,
+  isCodexSubagentSpawnTool,
   isEditTool,
   isSubagentToolName,
   isWriteEditTool,
@@ -17,27 +20,41 @@ import {
 import type { ChatMessage, StreamChunk, SubagentInfo, ToolCallInfo } from '../../../core/types';
 import type { SDKToolUseResult } from '../../../core/types/diff';
 import type ClaudianPlugin from '../../../main';
+import {
+  buildCodexSubagentInfo,
+  extractCodexSpawnResult,
+  extractCodexWaitResult,
+} from '../../../providers/codex/normalization/codexSubagentNormalization';
 import { formatDurationMmSs } from '../../../utils/date';
 import { extractDiffData } from '../../../utils/diff';
 import { getVaultPath, normalizePathForVault } from '../../../utils/path';
 import { FLAVOR_TEXTS } from '../constants';
+import type { MessageRenderer } from '../rendering/MessageRenderer';
+import {
+  createSubagentBlock,
+  finalizeSubagentBlock,
+  type SubagentState,
+} from '../rendering/SubagentRenderer';
 import {
   appendThinkingContent,
   createThinkingBlock,
-  createWriteEditBlock,
   finalizeThinkingBlock,
-  finalizeWriteEditBlock,
+} from '../rendering/ThinkingBlockRenderer';
+import {
   getToolName,
   getToolSummary,
   isBlockedToolResult,
   renderToolCall,
   updateToolCallResult,
+} from '../rendering/ToolCallRenderer';
+import {
+  createWriteEditBlock,
+  finalizeWriteEditBlock,
   updateWriteEditWithDiff,
-} from '../rendering';
-import type { MessageRenderer } from '../rendering/MessageRenderer';
+} from '../rendering/WriteEditRenderer';
 import type { SubagentManager } from '../services/SubagentManager';
 import type { ChatState } from '../state/ChatState';
-import type { FileContextManager } from '../ui';
+import type { FileContextManager } from '../ui/FileContext';
 
 export interface StreamControllerDeps {
   plugin: ClaudianPlugin;
@@ -55,6 +72,10 @@ export class StreamController {
   private static readonly ASYNC_SUBAGENT_RESULT_RETRY_DELAYS_MS = [200, 600, 1500] as const;
 
   private deps: StreamControllerDeps;
+
+  // Codex collab agent tracking (spawn_agent → wait_agent → close_agent lifecycle)
+  private codexSubagentStates = new Map<string, SubagentState>();  // spawn callId → SubagentState
+  private codexAgentIdToSpawnId = new Map<string, string>();       // agentId → spawn callId
 
   constructor(deps: StreamControllerDeps) {
     this.deps = deps;
@@ -109,6 +130,16 @@ export class StreamController {
 
         if (chunk.name === TOOL_AGENT_OUTPUT) {
           this.handleAgentOutputToolUse(chunk, msg);
+          break;
+        }
+
+        // Codex collab agent: render spawn_agent as subagent block, hide wait/close
+        if (isCodexSubagentSpawnTool(chunk.name)) {
+          this.handleCodexSpawnAgent(chunk, msg);
+          break;
+        }
+        if (isCodexSubagentHiddenTool(chunk.name)) {
+          this.handleCodexHiddenAgentTool(chunk, msg);
           break;
         }
 
@@ -335,6 +366,154 @@ export class StreamController {
     state.pendingTools.delete(toolId);
   }
 
+  // ============================================
+  // Codex Collab Agent (spawn_agent → wait_agent → close_agent)
+  // ============================================
+
+  private handleCodexSpawnAgent(
+    chunk: { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> },
+    msg: ChatMessage
+  ): void {
+    const { state } = this.deps;
+
+    const toolCall: ToolCallInfo = {
+      id: chunk.id,
+      name: chunk.name,
+      input: chunk.input,
+      status: 'running',
+      isExpanded: false,
+    };
+    msg.toolCalls = msg.toolCalls || [];
+    msg.toolCalls.push(toolCall);
+    msg.contentBlocks = msg.contentBlocks || [];
+    msg.contentBlocks.push({ type: 'tool_use', toolId: chunk.id });
+
+    // Render as subagent block immediately
+    if (state.currentContentEl) {
+      this.flushPendingTools();
+      const subagentInfo = buildCodexSubagentInfo(toolCall, msg.toolCalls);
+
+      const subagentState = createSubagentBlock(state.currentContentEl, chunk.id, {
+        description: subagentInfo.description,
+        prompt: subagentInfo.prompt,
+      });
+      this.codexSubagentStates.set(chunk.id, subagentState);
+    }
+  }
+
+  private handleCodexHiddenAgentTool(
+    chunk: { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> },
+    msg: ChatMessage
+  ): void {
+    // Track in toolCalls for data completeness, but don't create DOM or content block
+    const toolCall: ToolCallInfo = {
+      id: chunk.id,
+      name: chunk.name,
+      input: chunk.input,
+      status: 'running',
+      isExpanded: false,
+    };
+    msg.toolCalls = msg.toolCalls || [];
+    msg.toolCalls.push(toolCall);
+  }
+
+  /**
+   * Handles tool_result for Codex collab agent lifecycle tools.
+   * Returns true if the result was consumed (caller should return early).
+   */
+  private handleCodexSubagentResult(
+    chunk: { type: 'tool_result'; id: string; content: string; isError?: boolean },
+    msg: ChatMessage
+  ): boolean {
+    const existingToolCall = msg.toolCalls?.find(tc => tc.id === chunk.id);
+    if (!existingToolCall) return false;
+
+    // spawn_agent result: extract agent_id and nickname, update description
+    if (isCodexSubagentSpawnTool(existingToolCall.name)) {
+      existingToolCall.status = chunk.isError ? 'error' : 'completed';
+      existingToolCall.result = chunk.content;
+
+      const spawnResult = extractCodexSpawnResult(chunk.content);
+      if (spawnResult.agentId) {
+        this.codexAgentIdToSpawnId.set(spawnResult.agentId, chunk.id);
+      }
+
+      const subagentInfo = buildCodexSubagentInfo(existingToolCall, msg.toolCalls ?? []);
+      const subagentState = this.codexSubagentStates.get(chunk.id);
+      if (subagentState) {
+        subagentState.info.description = subagentInfo.description;
+        subagentState.info.prompt = subagentInfo.prompt;
+        subagentState.labelEl.setText(
+          subagentInfo.description.length > 40
+            ? subagentInfo.description.substring(0, 40) + '...'
+            : subagentInfo.description
+        );
+      }
+
+      if (chunk.isError) {
+        if (subagentState) {
+          finalizeSubagentBlock(subagentState, chunk.content || 'Error', true);
+        }
+      }
+      return true;
+    }
+
+    // wait_agent / wait result: extract completion text, finalize subagent
+    if (existingToolCall.name === 'wait_agent' || existingToolCall.name === 'wait') {
+      existingToolCall.status = chunk.isError ? 'error' : 'completed';
+      existingToolCall.result = chunk.content;
+
+      const waitResult = extractCodexWaitResult(chunk.content);
+      const spawnIds = new Set<string>();
+      for (const agentId of Object.keys(waitResult.statuses)) {
+        const spawnId = this.codexAgentIdToSpawnId.get(agentId);
+        if (spawnId) {
+          spawnIds.add(spawnId);
+        }
+      }
+      const targets = Array.isArray(existingToolCall.input.targets)
+        ? existingToolCall.input.targets
+        : Array.isArray(existingToolCall.input.ids)
+          ? existingToolCall.input.ids
+          : [];
+      for (const target of targets) {
+        if (typeof target !== 'string') continue;
+        const spawnId = this.codexAgentIdToSpawnId.get(target);
+        if (spawnId) {
+          spawnIds.add(spawnId);
+        }
+      }
+
+      for (const spawnId of spawnIds) {
+        const spawnToolCall = msg.toolCalls?.find(tc => tc.id === spawnId);
+        const subagentState = this.codexSubagentStates.get(spawnId);
+        if (!spawnToolCall || !subagentState) continue;
+
+        const subagentInfo = buildCodexSubagentInfo(spawnToolCall, msg.toolCalls ?? []);
+        subagentState.info.description = subagentInfo.description;
+        subagentState.info.prompt = subagentInfo.prompt;
+
+        if (subagentInfo.status === 'completed' || subagentInfo.status === 'error') {
+          finalizeSubagentBlock(
+            subagentState,
+            subagentInfo.result || (subagentInfo.status === 'error' ? 'Error' : 'DONE'),
+            subagentInfo.status === 'error'
+          );
+        }
+      }
+      return true;
+    }
+
+    // close_agent result: just update status
+    if (existingToolCall.name === 'close_agent') {
+      existingToolCall.status = chunk.isError ? 'error' : 'completed';
+      existingToolCall.result = chunk.content;
+      return true;
+    }
+
+    return false;
+  }
+
   private async handleToolResult(
     chunk: { type: 'tool_result'; id: string; content: string; isError?: boolean; toolUseResult?: SDKToolUseResult },
     msg: ChatMessage
@@ -361,6 +540,12 @@ export class StreamController {
 
     // Check if it's an agent output result
     if (await this.handleAgentOutputToolResult(chunk)) {
+      this.showThinkingIndicator();
+      return;
+    }
+
+    // Codex subagent: spawn_agent result → extract agent_id; wait_agent result → finalize
+    if (this.handleCodexSubagentResult(chunk, msg)) {
       this.showThinkingIndicator();
       return;
     }

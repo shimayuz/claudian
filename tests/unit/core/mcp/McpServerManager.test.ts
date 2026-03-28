@@ -1,4 +1,4 @@
-import { McpServerManager } from '@/core/mcp';
+import { McpServerManager } from '@/core/mcp/McpServerManager';
 import type { ManagedMcpServer } from '@/core/types';
 
 const createManager = async (servers: ManagedMcpServer[]) => {

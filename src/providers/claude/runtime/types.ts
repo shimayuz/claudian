@@ -6,7 +6,7 @@ import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 
 import type { StreamChunk } from '../../../core/types';
 import type { PermissionMode } from '../../../core/types/settings';
-import type { ClaudeModel, EffortLevel } from '../types';
+import type { ClaudeModel, EffortLevel } from '../types/models';
 
 export interface TextContentBlock {
   type: 'text';

@@ -3,8 +3,8 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp';
 
-import { McpServerManager } from '@/core/mcp';
-import { parseClipboardConfig, tryParseClipboardConfig } from '@/core/mcp';
+import { parseClipboardConfig, tryParseClipboardConfig } from '@/core/mcp/McpConfigParser';
+import { McpServerManager } from '@/core/mcp/McpServerManager';
 import { testMcpServer } from '@/core/mcp/McpTester';
 import type {
   ManagedMcpServer,

@@ -14,22 +14,20 @@ import {
   VIEW_TYPE_CLAUDIAN
 } from '@/core/types';
 import type { ClaudianSettings } from '@/core/types/settings';
-import type { LegacyPermission } from '@/providers/claude/types';
 import {
   CONTEXT_WINDOW_1M,
   CONTEXT_WINDOW_STANDARD,
-  createPermissionRule,
   DEFAULT_CLAUDE_MODELS,
-  DEFAULT_SETTINGS,
   filterVisibleModelOptions,
-  getCliPlatformKey,
   getContextWindowSize,
   isAdaptiveThinkingModel,
-  legacyPermissionsToCCPermissions,
-  legacyPermissionToCCRule,
   normalizeVisibleModelVariant,
+} from '@/providers/claude/types/models';
+import {
+  createPermissionRule,
+  DEFAULT_SETTINGS,
   parseCCPermissionRule,
-} from '@/providers/claude/types';
+} from '@/providers/claude/types/settings';
 
 describe('types.ts', () => {
   describe('VIEW_TYPE_CLAUDIAN', () => {
@@ -519,56 +517,6 @@ describe('types.ts', () => {
     });
   });
 
-  describe('Platform CLI helpers (deprecated)', () => {
-    describe('getCliPlatformKey', () => {
-      it('should return a valid platform key', () => {
-        const key = getCliPlatformKey();
-        expect(['macos', 'linux', 'windows']).toContain(key);
-      });
-
-      it('should return consistent results', () => {
-        const key1 = getCliPlatformKey();
-        const key2 = getCliPlatformKey();
-        expect(key1).toBe(key2);
-      });
-    });
-
-    describe('getCliPlatformKey with mocked platforms', () => {
-      const originalPlatform = process.platform;
-
-      afterEach(() => {
-        Object.defineProperty(process, 'platform', { value: originalPlatform });
-      });
-
-      it('should return macos for darwin', () => {
-        Object.defineProperty(process, 'platform', { value: 'darwin' });
-        expect(getCliPlatformKey()).toBe('macos');
-      });
-
-      it('should return windows for win32', () => {
-        Object.defineProperty(process, 'platform', { value: 'win32' });
-        expect(getCliPlatformKey()).toBe('windows');
-      });
-
-      it('should return linux for linux', () => {
-        Object.defineProperty(process, 'platform', { value: 'linux' });
-        expect(getCliPlatformKey()).toBe('linux');
-      });
-
-      it('should return linux for unknown platform', () => {
-        Object.defineProperty(process, 'platform', { value: 'freebsd' });
-        expect(getCliPlatformKey()).toBe('linux');
-      });
-    });
-
-    describe('DEFAULT_SETTINGS.claudeCliPathsByHost', () => {
-      it('should have empty hostname-based CLI paths by default', () => {
-        expect(DEFAULT_SETTINGS.claudeCliPathsByHost).toBeDefined();
-        expect(DEFAULT_SETTINGS.claudeCliPathsByHost).toEqual({});
-      });
-    });
-  });
-
   describe('Blocked commands helpers', () => {
     describe('getDefaultBlockedCommands', () => {
       it('returns fresh copies each call', () => {
@@ -639,96 +587,6 @@ describe('types.ts', () => {
   });
 
   describe('Permission Conversion Utilities', () => {
-    describe('legacyPermissionToCCRule', () => {
-      it('should convert Bash permission with pattern', () => {
-        const legacy: LegacyPermission = {
-          toolName: 'Bash',
-          pattern: 'git status',
-          approvedAt: Date.now(),
-          scope: 'always',
-        };
-        expect(legacyPermissionToCCRule(legacy)).toBe('Bash(git status)');
-      });
-
-      it('should convert Read permission with file path', () => {
-        const legacy: LegacyPermission = {
-          toolName: 'Read',
-          pattern: '/path/to/file.txt',
-          approvedAt: Date.now(),
-          scope: 'always',
-        };
-        expect(legacyPermissionToCCRule(legacy)).toBe('Read(/path/to/file.txt)');
-      });
-
-      it('should return just tool name for wildcard pattern', () => {
-        const legacy: LegacyPermission = {
-          toolName: 'WebSearch',
-          pattern: '*',
-          approvedAt: Date.now(),
-          scope: 'always',
-        };
-        expect(legacyPermissionToCCRule(legacy)).toBe('WebSearch');
-      });
-
-      it('should return just tool name for empty pattern', () => {
-        const legacy: LegacyPermission = {
-          toolName: 'Glob',
-          pattern: '',
-          approvedAt: Date.now(),
-          scope: 'always',
-        };
-        expect(legacyPermissionToCCRule(legacy)).toBe('Glob');
-      });
-
-      it('should return just tool name for JSON object pattern (legacy format)', () => {
-        const legacy: LegacyPermission = {
-          toolName: 'CustomTool',
-          pattern: '{"key":"value"}',
-          approvedAt: Date.now(),
-          scope: 'always',
-        };
-        expect(legacyPermissionToCCRule(legacy)).toBe('CustomTool');
-      });
-    });
-
-    describe('legacyPermissionsToCCPermissions', () => {
-      it('should convert array of legacy permissions to CC format', () => {
-        const legacy: LegacyPermission[] = [
-          { toolName: 'Bash', pattern: 'git *', approvedAt: Date.now(), scope: 'always' },
-          { toolName: 'Read', pattern: '/vault', approvedAt: Date.now(), scope: 'always' },
-        ];
-        const result = legacyPermissionsToCCPermissions(legacy);
-        expect(result.allow).toEqual(['Bash(git *)', 'Read(/vault)']);
-        expect(result.deny).toEqual([]);
-        expect(result.ask).toEqual([]);
-      });
-
-      it('should skip session-scoped permissions', () => {
-        const legacy: LegacyPermission[] = [
-          { toolName: 'Bash', pattern: 'npm test', approvedAt: Date.now(), scope: 'always' },
-          { toolName: 'Bash', pattern: 'rm temp.txt', approvedAt: Date.now(), scope: 'session' },
-        ];
-        const result = legacyPermissionsToCCPermissions(legacy);
-        expect(result.allow).toEqual(['Bash(npm test)']);
-      });
-
-      it('should deduplicate rules', () => {
-        const legacy: LegacyPermission[] = [
-          { toolName: 'Read', pattern: '*', approvedAt: Date.now(), scope: 'always' },
-          { toolName: 'Read', pattern: '*', approvedAt: Date.now() + 1000, scope: 'always' },
-        ];
-        const result = legacyPermissionsToCCPermissions(legacy);
-        expect(result.allow).toEqual(['Read']);
-      });
-
-      it('should return empty arrays for empty input', () => {
-        const result = legacyPermissionsToCCPermissions([]);
-        expect(result.allow).toEqual([]);
-        expect(result.deny).toEqual([]);
-        expect(result.ask).toEqual([]);
-      });
-    });
-
     describe('parseCCPermissionRule', () => {
       it('should parse rule with pattern', () => {
         const result = parseCCPermissionRule(createPermissionRule('Bash(git status)'));

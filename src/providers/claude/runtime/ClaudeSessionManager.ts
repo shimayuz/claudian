@@ -5,7 +5,7 @@
  * and interruption state.
  */
 
-import type { ClaudeModel } from '../types';
+import type { ClaudeModel } from '../types/models';
 import type { SessionState } from './types';
 
 /**

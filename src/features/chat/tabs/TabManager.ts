@@ -1,10 +1,10 @@
 import { Notice } from 'obsidian';
 
-import type { McpServerManager } from '../../../core/mcp';
-import { ProviderRegistry } from '../../../core/providers';
-import type { ChatRuntime } from '../../../core/runtime';
+import type { McpServerManager } from '../../../core/mcp/McpServerManager';
+import { ProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import type { ChatRuntime } from '../../../core/runtime/ChatRuntime';
 import type { SlashCommand } from '../../../core/types';
-import { t } from '../../../i18n';
+import { t } from '../../../i18n/i18n';
 import type ClaudianPlugin from '../../../main';
 import { chooseForkTarget } from '../../../shared/modals/ForkTargetModal';
 import {
@@ -116,6 +116,9 @@ export class TabManager implements TabManagerInterface {
     // Initialize UI components with shared SDK commands callback
     initializeTabUI(tab, this.plugin, {
       getSdkCommands: () => this.getSdkCommands(tab.id),
+      onProviderChanged: (providerId) => {
+        this.callbacks.onTabProviderChanged?.(tab.id, providerId);
+      },
     });
 
     // Initialize controllers (pass mcpManager for lazy service initialization)

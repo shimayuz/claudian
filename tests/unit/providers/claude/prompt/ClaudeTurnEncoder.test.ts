@@ -1,4 +1,4 @@
-import type { ChatTurnRequest } from '@/core/runtime';
+import type { ChatTurnRequest } from '@/core/runtime/types';
 import { encodeClaudeTurn } from '@/providers/claude/prompt/ClaudeTurnEncoder';
 
 function createMockMcpManager() {

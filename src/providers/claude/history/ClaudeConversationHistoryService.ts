@@ -8,7 +8,7 @@ import type {
   SubagentInfo,
   ToolCallInfo,
 } from '../../../core/types';
-import { type ClaudeProviderState, getClaudeState } from '../types';
+import { type ClaudeProviderState, getClaudeState } from '../types/providerState';
 import {
   deleteSDKSession,
   loadSDKSessionMessages,

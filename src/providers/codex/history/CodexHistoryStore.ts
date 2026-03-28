@@ -5,11 +5,14 @@ import * as path from 'path';
 import type { ChatMessage, ContentBlock, ToolCallInfo } from '../../../core/types';
 import {
   isCodexToolOutputError,
+  normalizeCodexMcpToolInput,
+  normalizeCodexMcpToolName,
+  normalizeCodexMcpToolState,
   normalizeCodexToolInput,
   normalizeCodexToolName,
   normalizeCodexToolResult,
   parseCodexArguments,
-} from '../normalization';
+} from '../normalization/codexToolNormalization';
 
 interface CodexEvent {
   type: string;
@@ -68,7 +71,13 @@ interface PersistedToolCallOutputPayload {
 
 interface PersistedWebSearchCallPayload {
   type: 'web_search_call';
-  action?: { query?: string };
+  action?: {
+    type?: string;
+    query?: string;
+    queries?: string[];
+    url?: string;
+    pattern?: string;
+  };
   status?: string;
   call_id?: string;
 }
@@ -79,6 +88,10 @@ interface PersistedMcpToolCallPayload {
   tool?: string;
   call_id?: string;
   status?: string;
+  arguments?: string | Record<string, unknown>;
+  result?: { content?: Array<{ type?: string; text?: string }> } | null;
+  error?: string | null;
+  duration_ms?: number | null;
 }
 
 interface PersistedEventPayload {
@@ -313,6 +326,7 @@ function parseTimestamp(value: unknown): number {
 const CODEX_SYSTEM_MESSAGE_PREFIXES = [
   '# AGENTS.md instructions',
   '<environment_context>',
+  '<subagent_notification>',
 ];
 
 const CODEX_BRACKET_CONTEXT_PATTERN = /\n\[(?:Current note|Editor selection from|Browser selection from|Canvas selection from)\b/;
@@ -535,7 +549,7 @@ function processPersistedToolOutput(
       const originBubble = originTurn.assistantBubbles[origin.bubbleIndex];
       const existing = originBubble.toolCalls.find(tool => tool.id === callId);
       if (existing) {
-        existing.result = normalizeCodexToolResult(existing.name, rawOutput);
+        existing.result = normalizePersistedToolOutput(existing, payload.output, rawOutput);
         existing.status = isCodexToolOutputError(rawOutput) ? 'error' : 'completed';
         return;
       }
@@ -556,18 +570,33 @@ function processPersistedToolOutput(
   });
 }
 
+function normalizePersistedToolOutput(
+  toolCall: ToolCallInfo,
+  rawOutputValue: string | unknown[] | undefined,
+  rawOutputText: string,
+): string {
+  if (Array.isArray(rawOutputValue) && toolCall.name === 'Read') {
+    const filePath = toolCall.input.file_path;
+    if (typeof filePath === 'string' && filePath) {
+      return filePath;
+    }
+  }
+
+  return normalizeCodexToolResult(toolCall.name, rawOutputText);
+}
+
 function processPersistedWebSearchCall(
   payload: PersistedWebSearchCallPayload,
   timestamp: number,
+  lineIndex: number,
   ctx: PersistedParseContext,
 ): void {
   const turn = ensureTurn(ctx.turns, ctx.turnOrder, nextTurnId(ctx), ctx.currentTurnId, timestamp);
   const bubble = ensureAssistantBubble(turn, timestamp);
 
-  // Use call_id if present, otherwise synthesize a stable ID per bubble.
-  // Multiple web_search_call entries per turn are common (one per query);
-  // group them under a single WebSearch tool invocation.
-  const callId = payload.call_id || `web-search-${turn.id}-${turn.assistantBubbles.indexOf(bubble)}`;
+  // Persisted web_search_call entries commonly omit call_id. Use transcript line index
+  // so live tailing and history reload reconstruct the same visible tool sequence.
+  const callId = payload.call_id || `tail-ws-${lineIndex}`;
 
   if (bubble.toolIndexesById.has(callId)) return;
 
@@ -607,18 +636,15 @@ function processPersistedMcpToolCall(
 
   if (bubble.toolIndexesById.has(callId)) return;
 
-  const server = payload.server ?? '';
-  const tool = payload.tool ?? '';
-
-  const isTerminal = payload.status === 'completed' || payload.status === 'failed'
-    || payload.status === 'error' || payload.status === 'cancelled';
+  const normalizedInput = normalizeCodexMcpToolInput(payload.arguments);
+  const normalizedState = normalizeCodexMcpToolState(payload.status, payload.result, payload.error);
 
   const toolCall: ToolCallInfo = {
     id: callId,
-    name: `mcp__${server}__${tool}`,
-    input: {},
-    status: isTerminal ? (payload.status === 'completed' ? 'completed' : 'error') : 'running',
-    ...(isTerminal ? { result: payload.status === 'completed' ? 'Completed' : 'Failed' } : {}),
+    name: normalizeCodexMcpToolName(payload.server, payload.tool),
+    input: normalizedInput,
+    status: normalizedState.status,
+    ...(normalizedState.result ? { result: normalizedState.result } : {}),
   };
 
   pushToolInvocation(bubble, toolCall);
@@ -632,6 +658,7 @@ function processPersistedMcpToolCall(
 function processPersistedPayload(
   payload: PersistedPayload,
   timestamp: number,
+  lineIndex: number,
   ctx: PersistedParseContext,
 ): void {
   if (!payload?.type) {
@@ -691,7 +718,7 @@ function processPersistedPayload(
       break;
 
     case 'web_search_call':
-      processPersistedWebSearchCall(payload as PersistedWebSearchCallPayload, timestamp, ctx);
+      processPersistedWebSearchCall(payload as PersistedWebSearchCallPayload, timestamp, lineIndex, ctx);
       break;
 
     case 'mcp_tool_call':
@@ -1038,7 +1065,7 @@ function parseModernSession(lines: string[]): ChatMessage[] {
     turnCounter: 0,
   };
 
-  for (const line of lines) {
+  for (const [lineIndex, line] of lines.entries()) {
     let parsed: { timestamp?: string; type?: string; event?: CodexEvent; payload?: PersistedPayload };
     try {
       parsed = JSON.parse(line);
@@ -1060,7 +1087,7 @@ function parseModernSession(lines: string[]): ChatMessage[] {
     }
 
     if (parsed.type === 'response_item') {
-      processPersistedPayload(parsed.payload, timestamp, ctx);
+      processPersistedPayload(parsed.payload, timestamp, lineIndex, ctx);
     }
   }
 

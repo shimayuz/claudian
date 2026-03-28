@@ -60,6 +60,11 @@ export class CodexAppServerProcess {
     this.exitCallbacks.push(callback);
   }
 
+  offExit(callback: ExitCallback): void {
+    const idx = this.exitCallbacks.indexOf(callback);
+    if (idx !== -1) this.exitCallbacks.splice(idx, 1);
+  }
+
   async shutdown(): Promise<void> {
     if (!this.proc || !this.alive) return;
 

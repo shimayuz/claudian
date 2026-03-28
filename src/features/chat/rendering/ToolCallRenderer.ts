@@ -1,7 +1,8 @@
 import { setIcon } from 'obsidian';
 
-import { extractResolvedAnswersFromResultText, type TodoItem } from '../../../core/tools';
+import type { TodoItem } from '../../../core/tools/todo';
 import { getToolIcon, MCP_ICON_MARKER } from '../../../core/tools/toolIcons';
+import { extractResolvedAnswersFromResultText } from '../../../core/tools/toolInput';
 import {
   isCodexAgentLifecycleTool,
   TOOL_APPLY_PATCH,
@@ -22,9 +23,11 @@ import {
   TOOL_WRITE,
   TOOL_WRITE_STDIN,
 } from '../../../core/tools/toolNames';
-import type { ToolCallInfo } from '../../../core/types';
+import type { AskUserQuestionItem, AskUserQuestionOption, ToolCallInfo } from '../../../core/types';
 import { MCP_ICON_SVG } from '../../../shared/icons';
+import { parseApplyPatchDiffs } from '../../../utils/diff';
 import { setupCollapsible } from './collapsible';
+import { renderDiffContent } from './DiffRenderer';
 import { renderTodoItems } from './todoUtils';
 
 export function setToolIcon(el: HTMLElement, name: string): void {
@@ -71,7 +74,7 @@ export function getToolSummary(name: string, input: Record<string, unknown>): st
     case TOOL_GREP:
       return (input.pattern as string) || '';
     case TOOL_WEB_SEARCH:
-      return truncateText((input.query as string) || '', 60);
+      return getWebSearchSummary(input, 60);
     case TOOL_WEB_FETCH:
       return truncateText((input.url as string) || '', 60);
     case TOOL_LS:
@@ -112,8 +115,7 @@ export function getToolLabel(name: string, input: Record<string, unknown>): stri
     case TOOL_GREP:
       return `Grep: ${input.pattern || 'pattern'}`;
     case TOOL_WEB_SEARCH: {
-      const query = (input.query as string) || 'search';
-      return `WebSearch: ${query.length > 40 ? query.substring(0, 40) + '...' : query}`;
+      return getWebSearchLabel(input, 40);
     }
     case TOOL_WEB_FETCH: {
       const url = (input.url as string) || 'url';
@@ -245,6 +247,77 @@ interface WebSearchLink {
   url: string;
 }
 
+interface WebSearchDisplayData {
+  actionType: string;
+  query: string;
+  queries: string[];
+  url: string;
+  pattern: string;
+}
+
+function normalizeWebSearchDisplayData(input: Record<string, unknown>): WebSearchDisplayData {
+  const queries = Array.isArray(input.queries)
+    ? input.queries
+        .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        .map(entry => entry.trim())
+    : [];
+
+  const query = typeof input.query === 'string' && input.query.trim()
+    ? input.query.trim()
+    : queries[0] ?? '';
+  const url = typeof input.url === 'string' && input.url.trim() ? input.url.trim() : '';
+  const pattern = typeof input.pattern === 'string' && input.pattern.trim() ? input.pattern.trim() : '';
+
+  const explicitActionType = typeof input.actionType === 'string' && input.actionType.trim()
+    ? input.actionType.trim()
+    : '';
+  const actionType = explicitActionType
+    || (url && pattern ? 'find_in_page' : url ? 'open_page' : (query || queries.length > 0) ? 'search' : '');
+
+  return { actionType, query, queries, url, pattern };
+}
+
+function getWebSearchSummary(input: Record<string, unknown>, maxLength: number): string {
+  const data = normalizeWebSearchDisplayData(input);
+
+  switch (data.actionType) {
+    case 'open_page':
+      return truncateText(`Open ${data.url || 'page'}`, maxLength);
+    case 'find_in_page': {
+      const target = data.pattern ? `Find "${data.pattern}"` : 'Find in page';
+      const suffix = data.url ? ` in ${data.url}` : '';
+      return truncateText(target + suffix, maxLength);
+    }
+    case 'search':
+      return truncateText(data.query || data.queries[0] || '', maxLength);
+    default:
+      return truncateText(data.query || data.url || data.pattern || '', maxLength);
+  }
+}
+
+function getWebSearchLabel(input: Record<string, unknown>, maxLength: number): string {
+  const summary = getWebSearchSummary(input, maxLength);
+  return `WebSearch: ${summary || 'search'}`;
+}
+
+function appendToolLink(parent: HTMLElement, title: string, url: string): void {
+  const linkEl = parent.createEl('a', { cls: 'claudian-tool-link' });
+  linkEl.setAttribute('href', url);
+  linkEl.setAttribute('target', '_blank');
+  linkEl.setAttribute('rel', 'noopener noreferrer');
+
+  const iconEl = linkEl.createSpan({ cls: 'claudian-tool-link-icon' });
+  setIcon(iconEl, 'external-link');
+
+  linkEl.createSpan({ cls: 'claudian-tool-link-title', text: title });
+}
+
+function isPlaceholderWebSearchResult(result: string | undefined): boolean {
+  if (!result) return true;
+  const normalized = result.trim().toLowerCase();
+  return normalized === '' || normalized === 'search complete';
+}
+
 function parseWebSearchResult(result: string): { links: WebSearchLink[]; summary: string } | null {
   const linksMatch = result.match(/Links:\s*(\[[\s\S]*?\])(?:\n|$)/);
   if (!linksMatch) return null;
@@ -261,30 +334,103 @@ function parseWebSearchResult(result: string): { links: WebSearchLink[]; summary
   }
 }
 
-function renderWebSearchExpanded(container: HTMLElement, result: string): void {
-  const parsed = parseWebSearchResult(result);
-  if (!parsed || parsed.links.length === 0) {
+function renderWebSearchActionExpanded(container: HTMLElement, input: Record<string, unknown>): boolean {
+  const data = normalizeWebSearchDisplayData(input);
+  const hasStructuredData = Boolean(data.actionType || data.query || data.queries.length || data.url || data.pattern);
+  if (!hasStructuredData) {
+    return false;
+  }
+
+  const linesEl = container.createDiv({ cls: 'claudian-tool-lines' });
+
+  switch (data.actionType) {
+    case 'open_page':
+      linesEl.createDiv({ cls: 'claudian-tool-line', text: 'Open page' });
+      if (data.url) {
+        appendToolLink(linesEl, data.url, data.url);
+      } else {
+        linesEl.createDiv({ cls: 'claudian-tool-line', text: 'URL unavailable' });
+      }
+      return true;
+
+    case 'find_in_page':
+      linesEl.createDiv({ cls: 'claudian-tool-line', text: 'Find in page' });
+      if (data.url) {
+        appendToolLink(linesEl, data.url, data.url);
+      } else {
+        linesEl.createDiv({ cls: 'claudian-tool-line', text: 'URL unavailable' });
+      }
+      if (data.pattern) {
+        linesEl.createDiv({ cls: 'claudian-tool-line', text: `Pattern: ${data.pattern}` });
+      }
+      return true;
+
+    case 'search':
+    default: {
+      const primaryQuery = data.query || data.queries[0];
+      linesEl.createDiv({
+        cls: 'claudian-tool-line',
+        text: primaryQuery ? `Query: ${primaryQuery}` : 'Search web',
+      });
+
+      const alternateQueries = data.queries.filter(query => query !== primaryQuery);
+      for (const query of alternateQueries.slice(0, 4)) {
+        linesEl.createDiv({ cls: 'claudian-tool-line', text: `Alt query: ${query}` });
+      }
+      if (alternateQueries.length > 4) {
+        linesEl.createDiv({
+          cls: 'claudian-tool-truncated',
+          text: `... ${alternateQueries.length - 4} more queries`,
+        });
+      }
+      return true;
+    }
+  }
+}
+
+function renderWebSearchExpanded(
+  container: HTMLElement,
+  input: Record<string, unknown>,
+  result: string | undefined,
+): void {
+  const parsed = result ? parseWebSearchResult(result) : null;
+  if (parsed && parsed.links.length > 0) {
+    const linksEl = container.createDiv({ cls: 'claudian-tool-lines' });
+    for (const link of parsed.links) {
+      appendToolLink(linksEl, link.title, link.url);
+    }
+
+    if (parsed.summary) {
+      const summaryEl = container.createDiv({ cls: 'claudian-tool-web-summary' });
+      summaryEl.setText(parsed.summary.length > 800 ? parsed.summary.slice(0, 800) + '...' : parsed.summary);
+    }
+    return;
+  }
+
+  const data = normalizeWebSearchDisplayData(input);
+  const shouldRenderAction = Boolean(data.actionType || data.query || data.queries.length || data.url || data.pattern)
+    && (!result
+      || isPlaceholderWebSearchResult(result)
+      || data.actionType === 'open_page'
+      || data.actionType === 'find_in_page');
+
+  if (shouldRenderAction && renderWebSearchActionExpanded(container, input)) {
+    if (result && !isPlaceholderWebSearchResult(result)) {
+      renderLinesExpanded(container, result, 12);
+    }
+    return;
+  }
+
+  if (result) {
     renderLinesExpanded(container, result, 20);
     return;
   }
 
-  const linksEl = container.createDiv({ cls: 'claudian-tool-lines' });
-  for (const link of parsed.links) {
-    const linkEl = linksEl.createEl('a', { cls: 'claudian-tool-link' });
-    linkEl.setAttribute('href', link.url);
-    linkEl.setAttribute('target', '_blank');
-    linkEl.setAttribute('rel', 'noopener noreferrer');
-
-    const iconEl = linkEl.createSpan({ cls: 'claudian-tool-link-icon' });
-    setIcon(iconEl, 'external-link');
-
-    linkEl.createSpan({ cls: 'claudian-tool-link-title', text: link.title });
+  if (renderWebSearchActionExpanded(container, input)) {
+    return;
   }
 
-  if (parsed.summary) {
-    const summaryEl = container.createDiv({ cls: 'claudian-tool-web-summary' });
-    summaryEl.setText(parsed.summary.length > 800 ? parsed.summary.slice(0, 800) + '...' : parsed.summary);
-  }
+  container.createDiv({ cls: 'claudian-tool-empty', text: 'No result' });
 }
 
 function renderFileSearchExpanded(container: HTMLElement, result: string): void {
@@ -366,21 +512,85 @@ function renderWebFetchExpanded(container: HTMLElement, result: string): void {
   }
 }
 
-function renderApplyPatchExpanded(container: HTMLElement, result: string): void {
-  // Show affected files from result text
-  const fileMatches = [...result.matchAll(/(?:update|add|delete|create|modify|Applied:\s*)(?:\w+:\s*)?([^\n,]+)/gi)];
-  if (fileMatches.length > 0) {
-    const linesEl = container.createDiv({ cls: 'claudian-tool-lines' });
-    for (const match of fileMatches) {
-      const filePath = match[1]?.trim();
-      if (filePath) {
-        const lineEl = linesEl.createDiv({ cls: 'claudian-tool-line' });
-        lineEl.setText(filePath);
+function renderApplyPatchExpanded(
+  container: HTMLElement,
+  input: Record<string, unknown>,
+  result: string | undefined,
+): void {
+  const patchText = typeof input.patch === 'string' ? input.patch : '';
+  const parsedDiffs = patchText ? parseApplyPatchDiffs(patchText) : [];
+
+  if (result && /verification failed|^[Ee]rror:/.test(result.trim())) {
+    renderLinesExpanded(container, result, 20);
+  }
+
+  if (parsedDiffs.length > 0) {
+    for (const fileDiff of parsedDiffs) {
+      const sectionEl = container.createDiv({ cls: 'claudian-tool-patch-section' });
+      const statsSuffix = fileDiff.stats.added || fileDiff.stats.removed
+        ? ` (+${fileDiff.stats.added} -${fileDiff.stats.removed})`
+        : '';
+      const pathText = fileDiff.movedTo
+        ? `${fileDiff.filePath} -> ${fileDiff.movedTo}`
+        : fileDiff.filePath;
+      sectionEl.createDiv({
+        cls: 'claudian-tool-patch-header',
+        text: `${fileDiff.operation}: ${pathText}${statsSuffix}`,
+      });
+
+      if (fileDiff.operation === 'delete' && fileDiff.diffLines.length === 0) {
+        sectionEl.createDiv({ cls: 'claudian-tool-empty', text: 'File deleted' });
+        continue;
       }
+
+      if (fileDiff.diffLines.length === 0) {
+        sectionEl.createDiv({ cls: 'claudian-tool-empty', text: 'No textual diff available' });
+        continue;
+      }
+
+      const diffRow = sectionEl.createDiv({ cls: 'claudian-write-edit-diff-row' });
+      const diffEl = diffRow.createDiv({ cls: 'claudian-write-edit-diff' });
+      renderDiffContent(diffEl, fileDiff.diffLines);
     }
     return;
   }
-  renderLinesExpanded(container, result, 15);
+
+  const changes = Array.isArray(input.changes) ? input.changes : [];
+  if (changes.length > 0) {
+    const linesEl = container.createDiv({ cls: 'claudian-tool-lines' });
+    for (const change of changes) {
+      if (!change || typeof change !== 'object') continue;
+      const path = typeof change.path === 'string' ? change.path : '';
+      const kind = typeof change.kind === 'string' ? change.kind : 'change';
+      if (!path) continue;
+      linesEl.createDiv({ cls: 'claudian-tool-line', text: `${kind}: ${path}` });
+    }
+    return;
+  }
+
+  if (patchText) {
+    renderLinesExpanded(container, patchText, 80);
+    return;
+  }
+
+  if (result) {
+    const fileMatches = [...result.matchAll(/(?:update|add|delete|create|modify|Applied:\s*)(?:\w+:\s*)?([^\n,]+)/gi)];
+    if (fileMatches.length > 0) {
+      const linesEl = container.createDiv({ cls: 'claudian-tool-lines' });
+      for (const match of fileMatches) {
+        const filePath = match[1]?.trim();
+        if (filePath) {
+          const lineEl = linesEl.createDiv({ cls: 'claudian-tool-line' });
+          lineEl.setText(filePath);
+        }
+      }
+      return;
+    }
+    renderLinesExpanded(container, result, 20);
+    return;
+  }
+
+  container.createDiv({ cls: 'claudian-tool-empty', text: 'No result' });
 }
 
 function renderCodexLifecycleExpanded(container: HTMLElement, result: string): void {
@@ -401,44 +611,51 @@ function renderCodexLifecycleExpanded(container: HTMLElement, result: string): v
   renderLinesExpanded(container, result, 20);
 }
 
-export function renderExpandedContent(container: HTMLElement, toolName: string, result: string | undefined): void {
-  if (!result) {
+export function renderExpandedContent(
+  container: HTMLElement,
+  toolName: string,
+  result: string | undefined,
+  input: Record<string, unknown> = {},
+): void {
+  if (!result && toolName !== TOOL_WEB_SEARCH) {
     container.createDiv({ cls: 'claudian-tool-empty', text: 'No result' });
     return;
   }
 
+  const resolvedResult = result ?? '';
+
   if (isCodexAgentLifecycleTool(toolName)) {
-    renderCodexLifecycleExpanded(container, result);
+    renderCodexLifecycleExpanded(container, resolvedResult);
     return;
   }
 
   switch (toolName) {
     case TOOL_BASH:
     case TOOL_WRITE_STDIN:
-      renderLinesExpanded(container, result, 20);
+      renderLinesExpanded(container, resolvedResult, 20);
       break;
     case TOOL_READ:
-      renderLinesExpanded(container, result, 15);
+      renderLinesExpanded(container, resolvedResult, 15);
       break;
     case TOOL_GLOB:
     case TOOL_GREP:
     case TOOL_LS:
-      renderFileSearchExpanded(container, result);
+      renderFileSearchExpanded(container, resolvedResult);
       break;
     case TOOL_WEB_SEARCH:
-      renderWebSearchExpanded(container, result);
+      renderWebSearchExpanded(container, input, result);
       break;
     case TOOL_WEB_FETCH:
-      renderWebFetchExpanded(container, result);
+      renderWebFetchExpanded(container, resolvedResult);
       break;
     case TOOL_TOOL_SEARCH:
-      renderToolSearchExpanded(container, result);
+      renderToolSearchExpanded(container, resolvedResult);
       break;
     case TOOL_APPLY_PATCH:
-      renderApplyPatchExpanded(container, result);
+      renderApplyPatchExpanded(container, input, result);
       break;
     default:
-      renderLinesExpanded(container, result, 20);
+      renderLinesExpanded(container, resolvedResult, 20);
       break;
   }
 }
@@ -579,14 +796,16 @@ function resolveAskUserAnswers(toolCall: ToolCallInfo): Record<string, unknown> 
 
 function renderAskUserQuestionResult(container: HTMLElement, toolCall: ToolCallInfo): boolean {
   container.empty();
-  const questions = toolCall.input.questions as Array<{ question: string }> | undefined;
+  const questions = toolCall.input.questions as AskUserQuestionItem[] | undefined;
   const answers = resolveAskUserAnswers(toolCall);
   if (!questions || !Array.isArray(questions) || !answers) return false;
 
   const reviewEl = container.createDiv({ cls: 'claudian-ask-review' });
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
-    const answer = formatAnswer(answers[q.question]);
+    const answer = formatAnswer(
+      (q.id ? answers[q.id] : undefined) ?? answers[q.question]
+    );
     const pairEl = reviewEl.createDiv({ cls: 'claudian-ask-review-pair' });
     pairEl.createDiv({ text: `${i + 1}.`, cls: 'claudian-ask-review-num' });
     const bodyEl = pairEl.createDiv({ cls: 'claudian-ask-review-body' });
@@ -601,7 +820,65 @@ function renderAskUserQuestionResult(container: HTMLElement, toolCall: ToolCallI
 }
 
 function renderAskUserQuestionFallback(container: HTMLElement, toolCall: ToolCallInfo, initialText?: string): void {
-  contentFallback(container, initialText || toolCall.result || 'Waiting for answer...');
+  container.empty();
+
+  const questions = Array.isArray(toolCall.input.questions)
+    ? toolCall.input.questions as AskUserQuestionItem[]
+    : [];
+
+  if (questions.length === 0) {
+    contentFallback(container, initialText || toolCall.result || 'Waiting for answer...');
+    return;
+  }
+
+  if (initialText || toolCall.result) {
+    container.createDiv({
+      cls: 'claudian-ask-review-prompt',
+      text: initialText || toolCall.result || 'Waiting for answer...',
+    });
+  }
+
+  for (let questionIndex = 0; questionIndex < questions.length; questionIndex++) {
+    const question = questions[questionIndex];
+    const reviewEl = container.createDiv({ cls: 'claudian-ask-review' });
+    const pairEl = reviewEl.createDiv({ cls: 'claudian-ask-review-pair' });
+    pairEl.createDiv({ text: `${questionIndex + 1}.`, cls: 'claudian-ask-review-num' });
+    const bodyEl = pairEl.createDiv({ cls: 'claudian-ask-review-body' });
+    bodyEl.createDiv({ text: question.question, cls: 'claudian-ask-review-q-text' });
+
+    if (!Array.isArray(question.options) || question.options.length === 0) {
+      bodyEl.createDiv({ cls: 'claudian-ask-review-empty', text: 'No options recorded' });
+      continue;
+    }
+
+    const listEl = bodyEl.createDiv({ cls: 'claudian-ask-list' });
+    question.options.forEach((option, optionIndex) => {
+      renderAskUserQuestionOption(listEl, option, optionIndex, question.multiSelect === true);
+    });
+  }
+}
+
+function renderAskUserQuestionOption(
+  parentEl: HTMLElement,
+  option: AskUserQuestionOption,
+  optionIndex: number,
+  isMultiSelect: boolean,
+): void {
+  const itemEl = parentEl.createDiv({ cls: 'claudian-ask-item is-disabled' });
+
+  if (isMultiSelect) {
+    itemEl.createDiv({ cls: 'claudian-ask-check', text: '[ ] ' });
+  } else {
+    itemEl.createDiv({ cls: 'claudian-ask-item-num', text: `${optionIndex + 1}. ` });
+  }
+
+  const contentEl = itemEl.createDiv({ cls: 'claudian-ask-item-content' });
+  const labelRowEl = contentEl.createDiv({ cls: 'claudian-ask-label-row' });
+  labelRowEl.createDiv({ cls: 'claudian-ask-item-label', text: option.label });
+
+  if (option.description) {
+    contentEl.createDiv({ cls: 'claudian-ask-item-desc', text: option.description });
+  }
 }
 
 function contentFallback(container: HTMLElement, text: string): void {
@@ -656,7 +933,7 @@ function renderToolContent(
   } else if (initialText) {
     contentFallback(content, initialText);
   } else {
-    renderExpandedContent(content, toolCall.name, toolCall.result);
+    renderExpandedContent(content, toolCall.name, toolCall.result, toolCall.input);
   }
 }
 
@@ -738,7 +1015,7 @@ export function updateToolCallResult(
   const content = toolEl.querySelector('.claudian-tool-content') as HTMLElement;
   if (content) {
     content.empty();
-    renderExpandedContent(content, toolCall.name, toolCall.result);
+    renderExpandedContent(content, toolCall.name, toolCall.result, toolCall.input);
   }
 }
 

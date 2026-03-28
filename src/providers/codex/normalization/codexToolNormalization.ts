@@ -29,6 +29,7 @@ const NATIVE_TOOLS = new Set([
   'spawn_agent',
   'send_input',
   'wait',
+  'wait_agent',
   'resume_agent',
   'close_agent',
 ]);
@@ -52,7 +53,7 @@ export function normalizeCodexToolInput(
     case 'shell_command':
     case 'shell':
     case 'exec_command':
-      return { command: (input.command ?? input.cmd ?? '') as string };
+      return { command: normalizeCommandValue(input.command ?? input.cmd ?? '') };
 
     case 'update_plan':
       return { todos: normalizeUpdatePlanTodos(input) };
@@ -69,6 +70,9 @@ export function normalizeCodexToolInput(
     case 'web_search':
     case 'web_search_call':
       return normalizeWebSearchInput(input);
+
+    case 'apply_patch':
+      return normalizeApplyPatchInput(input);
 
     default:
       return input;
@@ -97,24 +101,189 @@ function normalizeQuestions(input: Record<string, unknown>): Array<Record<string
   if (!Array.isArray(questions)) return [];
 
   return questions.map((entry: unknown, index: number) => {
-    if (!entry || typeof entry !== 'object') return { question: `Question ${index + 1}` };
+    if (!entry || typeof entry !== 'object') {
+      return {
+        question: `Question ${index + 1}`,
+        header: `Q${index + 1}`,
+        options: [],
+        multiSelect: false,
+      };
+    }
     const item = entry as Record<string, unknown>;
+    const options = Array.isArray(item.options)
+      ? item.options
+          .map((option: unknown) => {
+            if (typeof option === 'string') {
+              return { label: option, description: '' };
+            }
+            if (!option || typeof option !== 'object') {
+              return null;
+            }
+            const raw = option as Record<string, unknown>;
+            const label = typeof raw.label === 'string' ? raw.label : '';
+            const description = typeof raw.description === 'string' ? raw.description : '';
+            if (!label) return null;
+            return { label, description };
+          })
+          .filter((option): option is { label: string; description: string } => option !== null)
+      : [];
+
     return {
       question: String(item.question ?? `Question ${index + 1}`),
       ...(item.id ? { id: String(item.id) } : {}),
-      ...(item.header ? { header: String(item.header) } : {}),
+      header: typeof item.header === 'string' && item.header.trim()
+        ? String(item.header)
+        : `Q${index + 1}`,
+      options,
+      multiSelect: Boolean(item.multiSelect ?? item.multi_select),
     };
   });
 }
 
-function normalizeWebSearchInput(input: Record<string, unknown>): Record<string, unknown> {
-  // web_search_call uses action.query; web_search uses query directly
-  if (typeof input.query === 'string') return { query: input.query };
-  const action = input.action;
-  if (action && typeof action === 'object' && 'query' in action) {
-    return { query: String((action as Record<string, unknown>).query ?? '') };
+function normalizeCommandValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value
+      .map(entry => (typeof entry === 'string' ? entry : String(entry)))
+      .join(' ')
+      .trim();
   }
-  return { query: '' };
+  return value == null ? '' : String(value);
+}
+
+function normalizeWebSearchInput(input: Record<string, unknown>): Record<string, unknown> {
+  const action = input.action && typeof input.action === 'object'
+    ? input.action as Record<string, unknown>
+    : {};
+
+  const queries = normalizeStringArray(action.queries ?? input.queries);
+  const query = firstNonEmptyString(action.query, input.query, queries[0]);
+  const url = firstNonEmptyString(action.url, input.url);
+  const pattern = firstNonEmptyString(action.pattern, input.pattern);
+  const explicitType = firstNonEmptyString(action.type, input.actionType, input.action_type);
+
+  const actionType = explicitType
+    || (url && pattern ? 'find_in_page' : url ? 'open_page' : (query || queries.length > 0) ? 'search' : '');
+
+  const normalized: Record<string, unknown> = {};
+  if (actionType) normalized.actionType = actionType;
+  if (query) normalized.query = query;
+  if (queries.length > 0) normalized.queries = queries;
+  if (url) normalized.url = url;
+  if (pattern) normalized.pattern = pattern;
+  return normalized;
+}
+
+function normalizeApplyPatchInput(input: Record<string, unknown>): Record<string, unknown> {
+  const patch = firstNonEmptyString(input.patch, input.raw, input.value);
+  if (!patch) return input;
+
+  const normalized: Record<string, unknown> = { ...input, patch };
+  delete normalized.raw;
+  delete normalized.value;
+  return normalized;
+}
+
+function firstNonEmptyString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+  }
+  return '';
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const uniqueValues = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue;
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    uniqueValues.add(trimmed);
+  }
+
+  return [...uniqueValues];
+}
+
+// ---------------------------------------------------------------------------
+// MCP tool normalization
+// ---------------------------------------------------------------------------
+
+interface CodexMcpResultPart {
+  type?: string;
+  text?: string;
+}
+
+interface CodexMcpResultPayload {
+  content?: CodexMcpResultPart[] | null;
+}
+
+export interface NormalizedCodexMcpToolState {
+  isTerminal: boolean;
+  isError: boolean;
+  status: 'running' | 'completed' | 'error';
+  result?: string;
+}
+
+export function normalizeCodexMcpToolName(server: unknown, tool: unknown): string {
+  const serverName = typeof server === 'string' ? server : '';
+  const toolName = typeof tool === 'string' ? tool : '';
+  if (!serverName && !toolName) return 'tool';
+  return `mcp__${serverName}__${toolName}`;
+}
+
+export function normalizeCodexMcpToolInput(rawArguments: unknown): Record<string, unknown> {
+  if (typeof rawArguments === 'string') {
+    return parseCodexArguments(rawArguments);
+  }
+
+  if (rawArguments && typeof rawArguments === 'object' && !Array.isArray(rawArguments)) {
+    return rawArguments as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+export function normalizeCodexMcpToolState(
+  rawStatus: unknown,
+  resultPayload?: unknown,
+  rawError?: unknown,
+): NormalizedCodexMcpToolState {
+  const status = typeof rawStatus === 'string' ? rawStatus : '';
+  const error = typeof rawError === 'string' ? rawError : '';
+  const resultText = extractCodexMcpResultText(resultPayload);
+  const isTerminalStatus = status === 'completed'
+    || status === 'failed'
+    || status === 'error'
+    || status === 'cancelled';
+  const isTerminal = isTerminalStatus || Boolean(error) || Boolean(resultText);
+  const isError = Boolean(error) || status === 'failed' || status === 'error' || status === 'cancelled';
+
+  let result = error || resultText;
+  if (!result && isTerminalStatus) {
+    result = status === 'completed' ? 'Completed' : 'Failed';
+  }
+
+  return {
+    isTerminal,
+    isError,
+    status: isTerminal ? (isError ? 'error' : 'completed') : 'running',
+    ...(result ? { result } : {}),
+  };
+}
+
+function extractCodexMcpResultText(resultPayload?: unknown): string {
+  if (!resultPayload || typeof resultPayload !== 'object') return '';
+
+  const content = (resultPayload as CodexMcpResultPayload).content;
+  if (!Array.isArray(content)) return '';
+
+  return content
+    .map(item => (typeof item?.text === 'string' ? item.text : ''))
+    .filter(Boolean)
+    .join('\n');
 }
 
 // ---------------------------------------------------------------------------

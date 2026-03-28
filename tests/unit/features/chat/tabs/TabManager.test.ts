@@ -52,7 +52,7 @@ const mockGetCapabilities = jest.fn().mockReturnValue({
   supportsProviderCommands: true,
   reasoningControl: 'effort',
 });
-jest.mock('@/core/providers', () => ({
+jest.mock('@/core/providers/ProviderRegistry', () => ({
   ProviderRegistry: {
     getConversationHistoryService: () => ({
       buildForkProviderState: mockBuildForkProviderState,

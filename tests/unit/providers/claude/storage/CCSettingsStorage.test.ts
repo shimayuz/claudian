@@ -1,7 +1,7 @@
 
 import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
 import { CC_SETTINGS_PATH, CCSettingsStorage } from '@/providers/claude/storage/CCSettingsStorage';
-import { createPermissionRule } from '@/providers/claude/types';
+import { createPermissionRule } from '@/providers/claude/types/settings';
 
 const mockAdapter = {
     exists: jest.fn(),
@@ -161,24 +161,6 @@ describe('CCSettingsStorage', () => {
             expect(writtenContent.permissions).toEqual({ allow: [], deny: [], ask: [] });
         });
 
-        it('should strip claudian-only fields during migration', async () => {
-            mockAdapter.exists.mockResolvedValue(true);
-            mockAdapter.read.mockResolvedValue(JSON.stringify({
-                permissions: { allow: [], deny: [], ask: [] },
-                userName: 'Test',
-                model: 'haiku',
-            }));
-
-            await storage.save({
-                permissions: { allow: [], deny: [], ask: [] }
-            }, true);
-
-            const writeCall = mockAdapter.write.mock.calls[0];
-            const writtenContent = JSON.parse(writeCall[1]);
-            expect(writtenContent.userName).toBeUndefined();
-            expect(writtenContent.model).toBeUndefined();
-        });
-
         it('should preserve enabledPlugins from settings argument', async () => {
             mockAdapter.exists.mockResolvedValue(false);
 
@@ -194,19 +176,6 @@ describe('CCSettingsStorage', () => {
     });
 
     describe('load edge cases', () => {
-        it('should handle legacy permissions format during load', async () => {
-            mockAdapter.exists.mockResolvedValue(true);
-            mockAdapter.read.mockResolvedValue(JSON.stringify({
-                permissions: [
-                    { toolName: 'Bash', pattern: 'git *', approvedAt: 1000, scope: 'always' },
-                ],
-            }));
-
-            const result = await storage.load();
-            expect(result.permissions?.allow).toBeDefined();
-            expect(result.permissions?.allow?.length).toBeGreaterThan(0);
-        });
-
         it('should normalize invalid permissions to defaults', async () => {
             mockAdapter.exists.mockResolvedValue(true);
             mockAdapter.read.mockResolvedValue(JSON.stringify({

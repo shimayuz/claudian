@@ -2,10 +2,10 @@ import * as fs from 'fs';
 import type { App } from 'obsidian';
 import { Notice, PluginSettingTab, Setting } from 'obsidian';
 
-import { ProviderRegistry } from '../../core/providers';
+import { ProviderRegistry } from '../../core/providers/ProviderRegistry';
 import type { ProviderId } from '../../core/providers/types';
 import { getCurrentPlatformKey } from '../../core/types';
-import { getAvailableLocales, getLocaleDisplayName, setLocale, t } from '../../i18n';
+import { getAvailableLocales, getLocaleDisplayName, setLocale, t } from '../../i18n/i18n';
 import type { Locale, TranslationKey } from '../../i18n/types';
 import type ClaudianPlugin from '../../main';
 import { findNodeExecutable, formatContextLimit, getEnhancedPath, parseContextLimit, parseEnvironmentVariables } from '../../utils/env';

@@ -19,8 +19,8 @@ import type { VaultFileAdapter } from '../../../core/storage/VaultFileAdapter';
 import type { PlatformBlockedCommands } from '../../../core/types';
 import { getDefaultBlockedCommands } from '../../../core/types';
 import type { ClaudianSettings } from '../../../core/types/settings';
-import type { ClaudeModel } from '../types';
-import { DEFAULT_SETTINGS } from '../types';
+import type { ClaudeModel } from '../types/models';
+import { DEFAULT_SETTINGS } from '../types/settings';
 
 /** Path to Claudian settings file relative to vault root. */
 export const CLAUDIAN_SETTINGS_PATH = '.claude/claudian-settings.json';
@@ -129,46 +129,6 @@ export class ClaudianSettingsStorage {
   async update(updates: Partial<StoredClaudianSettings>): Promise<void> {
     const current = await this.load();
     await this.save({ ...current, ...updates });
-  }
-
-  /**
-   * Read legacy activeConversationId from claudian-settings.json, if present.
-   * Used only for one-time migration to tabManagerState.
-   */
-  async getLegacyActiveConversationId(): Promise<string | null> {
-    if (!(await this.adapter.exists(CLAUDIAN_SETTINGS_PATH))) {
-      return null;
-    }
-
-    const content = await this.adapter.read(CLAUDIAN_SETTINGS_PATH);
-    const stored = JSON.parse(content) as Record<string, unknown>;
-    const value = stored.activeConversationId;
-
-    if (typeof value === 'string') {
-      return value;
-    }
-
-    return null;
-  }
-
-  /**
-   * Remove legacy activeConversationId from claudian-settings.json.
-   */
-  async clearLegacyActiveConversationId(): Promise<void> {
-    if (!(await this.adapter.exists(CLAUDIAN_SETTINGS_PATH))) {
-      return;
-    }
-
-    const content = await this.adapter.read(CLAUDIAN_SETTINGS_PATH);
-    const stored = JSON.parse(content) as Record<string, unknown>;
-
-    if (!('activeConversationId' in stored)) {
-      return;
-    }
-
-    delete stored.activeConversationId;
-    const nextContent = JSON.stringify(stored, null, 2);
-    await this.adapter.write(CLAUDIAN_SETTINGS_PATH, nextContent);
   }
 
   async setLastModel(model: ClaudeModel, isCustom: boolean): Promise<void> {

@@ -1,7 +1,7 @@
 import type { Plugin } from 'obsidian';
 
-import { StorageService } from '@/providers/claude/storage';
-import { createPermissionRule } from '@/providers/claude/types';
+import { StorageService } from '@/providers/claude/storage/StorageService';
+import { createPermissionRule } from '@/providers/claude/types/settings';
 
 function createMockAdapter(initialFiles: Record<string, string> = {}) {
   const files = new Map<string, string>(Object.entries(initialFiles));
@@ -268,98 +268,6 @@ describe('StorageService convenience methods', () => {
       const adapter = storage.getAdapter();
       expect(adapter).toBeDefined();
       expect(typeof adapter.exists).toBe('function');
-    });
-  });
-
-  describe('getLegacyActiveConversationId', () => {
-    it('returns id from claudian settings', async () => {
-      const settings = JSON.stringify({
-        userName: 'Test',
-        activeConversationId: 'conv-from-settings',
-      });
-      const { plugin } = createMockPlugin({
-        initialFiles: {
-          '.claude/claudian-settings.json': settings,
-        },
-      });
-      const storage = new StorageService(plugin);
-      await storage.initialize();
-
-      const id = await storage.getLegacyActiveConversationId();
-      expect(id).toBe('conv-from-settings');
-    });
-
-    it('falls back to data.json when not in claudian settings', async () => {
-      const { plugin } = createMockPlugin({
-        dataJson: { activeConversationId: 'conv-from-data' },
-        initialFiles: {
-          '.claude/claudian-settings.json': JSON.stringify({ userName: 'Test' }),
-        },
-      });
-      const storage = new StorageService(plugin);
-      await storage.initialize();
-
-      const id = await storage.getLegacyActiveConversationId();
-      expect(id).toBe('conv-from-data');
-    });
-
-    it('returns null when not found in either source', async () => {
-      const { plugin } = createMockPlugin({
-        dataJson: {},
-        initialFiles: {
-          '.claude/claudian-settings.json': JSON.stringify({ userName: 'Test' }),
-        },
-      });
-      const storage = new StorageService(plugin);
-      await storage.initialize();
-
-      const id = await storage.getLegacyActiveConversationId();
-      expect(id).toBeNull();
-    });
-  });
-
-  describe('clearLegacyActiveConversationId', () => {
-    it('clears from data.json', async () => {
-      const { plugin } = createMockPlugin({
-        dataJson: { activeConversationId: 'conv-1', otherField: 'keep' },
-        initialFiles: {
-          '.claude/claudian-settings.json': JSON.stringify({ userName: 'Test' }),
-        },
-      });
-      const storage = new StorageService(plugin);
-      await storage.initialize();
-
-      await storage.clearLegacyActiveConversationId();
-
-      expect(plugin.saveData).toHaveBeenCalledWith(
-        expect.objectContaining({ otherField: 'keep' }),
-      );
-      const savedData = (plugin.saveData as jest.Mock).mock.calls.find(
-        (call: unknown[]) => {
-          const arg = call[0] as Record<string, unknown>;
-          return !('activeConversationId' in arg);
-        },
-      );
-      expect(savedData).toBeDefined();
-    });
-
-    it('no-ops when data.json has no activeConversationId', async () => {
-      const { plugin } = createMockPlugin({
-        dataJson: { otherField: 'keep' },
-        initialFiles: {
-          '.claude/claudian-settings.json': JSON.stringify({ userName: 'Test' }),
-        },
-      });
-      const storage = new StorageService(plugin);
-      await storage.initialize();
-
-      // Reset mock calls from initialize
-      (plugin.saveData as jest.Mock).mockClear();
-
-      await storage.clearLegacyActiveConversationId();
-
-      // saveData should not have been called for data.json cleanup
-      expect(plugin.saveData).not.toHaveBeenCalled();
     });
   });
 

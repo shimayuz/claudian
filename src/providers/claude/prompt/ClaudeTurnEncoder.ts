@@ -1,5 +1,5 @@
-import type { McpServerManager } from '../../../core/mcp';
-import type { ChatTurnRequest, PreparedChatTurn } from '../../../core/runtime';
+import type { McpServerManager } from '../../../core/mcp/McpServerManager';
+import type { ChatTurnRequest, PreparedChatTurn } from '../../../core/runtime/types';
 import { appendBrowserContext } from '../../../utils/browser';
 import { appendCanvasContext } from '../../../utils/canvas';
 import { appendCurrentNote } from '../../../utils/context';

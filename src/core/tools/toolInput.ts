@@ -30,6 +30,12 @@ function normalizeAnswerValue(value: unknown): string | undefined {
       .join(', ');
     return normalized || undefined;
   }
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+    if ('answers' in record) return normalizeAnswerValue(record.answers);
+    if ('answer' in record) return normalizeAnswerValue(record.answer);
+    if ('value' in record) return normalizeAnswerValue(record.value);
+  }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return undefined;
 }
@@ -55,6 +61,10 @@ function parseAnswersFromJsonObject(resultText: string): AskUserAnswers | undefi
 
   try {
     const parsed = JSON.parse(resultText.slice(start, end + 1)) as unknown;
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      const record = parsed as Record<string, unknown>;
+      return normalizeAnswersObject(record.answers) ?? normalizeAnswersObject(parsed);
+    }
     return normalizeAnswersObject(parsed);
   } catch {
     return undefined;

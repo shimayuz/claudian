@@ -1,6 +1,6 @@
 import type ClaudianPlugin from '../../main';
 import { PROVIDER_REGISTRATIONS } from '../../providers';
-import type { ChatRuntime } from '../runtime';
+import type { ChatRuntime } from '../runtime/ChatRuntime';
 import {
   type CreateChatRuntimeOptions,
   DEFAULT_CHAT_PROVIDER_ID,

@@ -63,6 +63,18 @@ describe('extractResolvedAnswersFromResultText', () => {
     });
   });
 
+  it('extracts nested Codex answer objects from JSON result text', () => {
+    expect(extractResolvedAnswersFromResultText('{"answers":{"q1":{"answers":["yes"]}}}')).toEqual({
+      q1: 'yes',
+    });
+  });
+
+  it('extracts nested answer values from wrapped JSON text', () => {
+    expect(extractResolvedAnswersFromResultText('Result: {"answers":{"q1":{"value":"Blue"}}}')).toEqual({
+      q1: 'Blue',
+    });
+  });
+
   it('returns undefined when text cannot be parsed', () => {
     expect(extractResolvedAnswersFromResultText('No parsed answers here')).toBeUndefined();
   });

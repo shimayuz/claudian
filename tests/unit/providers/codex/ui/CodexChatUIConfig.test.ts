@@ -4,8 +4,9 @@ describe('CodexChatUIConfig', () => {
   describe('getModelOptions', () => {
     it('should return default models when no env vars', () => {
       const options = codexChatUIConfig.getModelOptions({});
-      expect(options).toHaveLength(1);
+      expect(options).toHaveLength(2);
       expect(options.map(o => o.value)).toContain('gpt-5.4');
+      expect(options.map(o => o.value)).toContain('gpt-5.4-mini');
     });
 
     it('should prepend custom model from OPENAI_MODEL env var', () => {
@@ -14,14 +15,14 @@ describe('CodexChatUIConfig', () => {
       });
       expect(options[0].value).toBe('my-custom-model');
       expect(options[0].description).toBe('Custom (env)');
-      expect(options.length).toBe(2);
+      expect(options.length).toBe(3);
     });
 
     it('should not duplicate when OPENAI_MODEL matches a default model', () => {
       const options = codexChatUIConfig.getModelOptions({
         environmentVariables: 'OPENAI_MODEL=gpt-5.4',
       });
-      expect(options.length).toBe(1);
+      expect(options.length).toBe(2);
     });
   });
 
@@ -55,6 +56,7 @@ describe('CodexChatUIConfig', () => {
   describe('isDefaultModel', () => {
     it('should return true for built-in models', () => {
       expect(codexChatUIConfig.isDefaultModel('gpt-5.4')).toBe(true);
+      expect(codexChatUIConfig.isDefaultModel('gpt-5.4-mini')).toBe(true);
     });
 
     it('should return false for custom models', () => {

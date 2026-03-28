@@ -4,11 +4,14 @@ import type { StreamChunk, UsageInfo } from '../../../core/types/chat';
 import { findCodexSessionFile } from '../history/CodexHistoryStore';
 import {
   isCodexToolOutputError,
+  normalizeCodexMcpToolInput,
+  normalizeCodexMcpToolName,
+  normalizeCodexMcpToolState,
   normalizeCodexToolInput,
   normalizeCodexToolName,
   normalizeCodexToolResult,
   parseCodexArguments,
-} from '../normalization';
+} from '../normalization/codexToolNormalization';
 
 // ---------------------------------------------------------------------------
 // Model-specific context windows
@@ -85,15 +88,23 @@ export interface ResponseItemTailState {
   knownCalls: Map<string, { toolName: string; toolInput: unknown }>;
 }
 
+export interface CallEnrichmentData {
+  exitCode?: number;
+  mcpServer?: string;
+  mcpTool?: string;
+}
+
 export interface SessionTailState {
   responseItemState: ResponseItemTailState;
   currentTurnId: string | null;
   syntheticTurnCounter: number;
+  modelContextWindow: number;
   lastTextByTurn: Map<string, string>;
   lastThinkingByTurn: Map<string, string>;
   pendingUsageByTurn: Map<string, { contextTokens: number; contextWindow: number }>;
   emittedDoneByTurn: Set<string>;
   emittedUsageByTurn: Set<string>;
+  callEnrichment: Map<string, CallEnrichmentData>;
 }
 
 export function createSessionTailState(): SessionTailState {
@@ -105,11 +116,13 @@ export function createSessionTailState(): SessionTailState {
     },
     currentTurnId: null,
     syntheticTurnCounter: 0,
+    modelContextWindow: DEFAULT_CONTEXT_WINDOW,
     lastTextByTurn: new Map(),
     lastThinkingByTurn: new Map(),
     pendingUsageByTurn: new Map(),
     emittedDoneByTurn: new Set(),
     emittedUsageByTurn: new Set(),
+    callEnrichment: new Map(),
   };
 }
 
@@ -181,6 +194,9 @@ export function mapEventMsgEvent(
         getNonEmptyString(payload.turn_id, `synthetic-turn-${state.syntheticTurnCounter++}`),
       );
       state.currentTurnId = turnId;
+      if (typeof payload.model_context_window === 'number') {
+        state.modelContextWindow = payload.model_context_window;
+      }
       return [];
     }
 
@@ -253,17 +269,66 @@ export function mapEventMsgEvent(
     case 'token_count': {
       const turnId = resolveTurnId(state, undefined);
       const lastTokenUsage = isRecord(info.last_token_usage) ? info.last_token_usage : {};
-      const inputTokens = typeof lastTokenUsage.input === 'number' ? lastTokenUsage.input : 0;
-      const contextWindow = typeof info.model_context_window === 'number'
-        ? info.model_context_window
-        : DEFAULT_CONTEXT_WINDOW;
+      const inputTokens = typeof lastTokenUsage.input_tokens === 'number'
+        ? lastTokenUsage.input_tokens
+        : typeof lastTokenUsage.input === 'number'
+          ? lastTokenUsage.input
+          : 0;
 
       state.pendingUsageByTurn.set(turnId, {
         contextTokens: inputTokens,
-        contextWindow,
+        contextWindow: state.modelContextWindow,
       });
       return [];
     }
+
+    case 'exec_command_end': {
+      const callId = typeof payload.call_id === 'string' ? payload.call_id : '';
+      if (callId) {
+        const exitCode = typeof payload.exit_code === 'number' ? payload.exit_code : undefined;
+        state.callEnrichment.set(callId, {
+          ...state.callEnrichment.get(callId),
+          exitCode,
+        });
+      }
+      return [];
+    }
+
+    case 'patch_apply_end': {
+      const callId = typeof payload.call_id === 'string' ? payload.call_id : '';
+      if (callId && typeof payload.success === 'boolean' && !payload.success) {
+        state.callEnrichment.set(callId, {
+          ...state.callEnrichment.get(callId),
+          exitCode: 1,
+        });
+      }
+      return [];
+    }
+
+    case 'mcp_tool_call_end': {
+      const callId = typeof payload.call_id === 'string' ? payload.call_id : '';
+      const invocation = isRecord(payload.invocation) ? payload.invocation : {};
+      if (callId && typeof invocation.server === 'string' && typeof invocation.tool === 'string') {
+        state.callEnrichment.set(callId, {
+          ...state.callEnrichment.get(callId),
+          mcpServer: invocation.server,
+          mcpTool: invocation.tool,
+        });
+        // Update the known call's tool name so the tool_result uses the MCP-prefixed name
+        const known = state.responseItemState.knownCalls.get(callId);
+        if (known) {
+          known.toolName = `mcp__${invocation.server}__${invocation.tool}`;
+        }
+      }
+      return [];
+    }
+
+    case 'web_search_end':
+    case 'view_image_tool_call':
+    case 'collab_agent_spawn_end':
+    case 'collab_waiting_end':
+    case 'collab_close_end':
+      return [];
 
     default:
       return [];
@@ -326,7 +391,12 @@ export function mapResponseItemEvent(
           ? payload.input
           : undefined;
       const parsedArgs = parseCodexArguments(rawArgs);
-      const normalizedName = normalizeCodexToolName(rawName);
+
+      // Use MCP enrichment if available (mcp_tool_call_end may arrive before function_call)
+      const enrichment = state.callEnrichment.get(callId);
+      const normalizedName = enrichment?.mcpServer && enrichment?.mcpTool
+        ? `mcp__${enrichment.mcpServer}__${enrichment.mcpTool}`
+        : normalizeCodexToolName(rawName);
       const normalizedInput = normalizeCodexToolInput(rawName, parsedArgs);
 
       riState.knownCalls.set(callId, { toolName: normalizedName, toolInput: normalizedInput });
@@ -350,12 +420,57 @@ export function mapResponseItemEvent(
 
       riState.knownCalls.set(callId, { toolName: 'WebSearch', toolInput: input });
 
-      return [{
+      const chunks: StreamChunk[] = [{
         type: 'tool_use',
         id: callId,
         name: 'WebSearch',
         input,
       }];
+
+      // Persisted web_search_call includes final status — emit tool_result immediately
+      if (payload.status) {
+        riState.emittedToolResultIds.add(callId);
+        chunks.push({
+          type: 'tool_result',
+          id: callId,
+          content: 'Search complete',
+          isError: payload.status === 'failed' || payload.status === 'error',
+        });
+      }
+
+      return chunks;
+    }
+
+    case 'mcp_tool_call': {
+      const callId = getNonEmptyString(payload.call_id, `tail-mcp-${lineIndex}`);
+      const normalizedName = normalizeCodexMcpToolName(payload.server, payload.tool);
+      const normalizedInput = normalizeCodexMcpToolInput(payload.arguments);
+      const normalizedState = normalizeCodexMcpToolState(payload.status, payload.result, payload.error);
+      const chunks: StreamChunk[] = [];
+
+      riState.knownCalls.set(callId, { toolName: normalizedName, toolInput: normalizedInput });
+
+      if (!riState.emittedToolUseIds.has(callId)) {
+        riState.emittedToolUseIds.add(callId);
+        chunks.push({
+          type: 'tool_use',
+          id: callId,
+          name: normalizedName,
+          input: normalizedInput,
+        });
+      }
+
+      if (normalizedState.isTerminal && !riState.emittedToolResultIds.has(callId)) {
+        riState.emittedToolResultIds.add(callId);
+        chunks.push({
+          type: 'tool_result',
+          id: callId,
+          content: normalizedState.result ?? (normalizedState.isError ? 'Failed' : 'Completed'),
+          isError: normalizedState.isError,
+        });
+      }
+
+      return chunks;
     }
 
     case 'function_call_output':
@@ -364,16 +479,37 @@ export function mapResponseItemEvent(
       if (riState.emittedToolResultIds.has(callId)) return [];
       riState.emittedToolResultIds.add(callId);
 
-      const rawOutput = typeof payload.output === 'string' ? payload.output : stringifyPayloadValue(payload.output);
       const known = riState.knownCalls.get(callId);
       const normalizedName = known?.toolName ?? 'tool';
+      const enrichment = state.callEnrichment.get(callId);
+
+      // Image content: view_image returns array of {type: "input_image", image_url: "data:..."}
+      if (Array.isArray(payload.output)) {
+        const imagePath = known?.toolInput
+          && typeof (known.toolInput as Record<string, unknown>).file_path === 'string'
+          ? (known.toolInput as Record<string, unknown>).file_path as string
+          : 'Image loaded';
+        return [{
+          type: 'tool_result',
+          id: callId,
+          content: imagePath,
+          isError: false,
+        }];
+      }
+
+      const rawOutput = typeof payload.output === 'string' ? payload.output : stringifyPayloadValue(payload.output);
       const content = normalizeCodexToolResult(normalizedName, rawOutput);
+
+      // Prefer enrichment exit_code over regex-based error detection
+      const isError = enrichment?.exitCode !== undefined
+        ? enrichment.exitCode !== 0
+        : isCodexToolOutputError(rawOutput);
 
       return [{
         type: 'tool_result',
         id: callId,
         content,
-        isError: isCodexToolOutputError(rawOutput),
+        isError,
       }];
     }
 
@@ -412,6 +548,7 @@ export class CodexFileTailEngine {
   private pendingEvents: StreamChunk[] = [];
   private pollingActive = false;
   private pollPromise: Promise<void> | null = null;
+  private pollingError: Error | null = null;
   private lastEventAt = 0;
   private lastPollAt = 0;
   private consecutiveReadFailures = 0;
@@ -432,17 +569,26 @@ export class CodexFileTailEngine {
     return this._usageEmitted;
   }
 
-  async primeCursor(sessionId: string): Promise<void> {
-    const filePath = this.findSessionFile(sessionId);
-    if (!filePath) return;
+  async primeCursor(sessionId: string, sessionFilePath?: string): Promise<boolean> {
+    const filePath = this.findSessionFile(sessionId, sessionFilePath);
+    if (!filePath) return false;
 
     const lines = this.readFileLines(filePath);
     this.tailLineCursor = lines.length;
+    return true;
   }
 
-  startPolling(sessionId: string): void {
+  startPolling(sessionId: string, sessionFilePath?: string): boolean {
+    const filePath = this.findSessionFile(sessionId, sessionFilePath);
+    if (!filePath) {
+      return false;
+    }
+
+    this.tailSessionFile = filePath;
     this.pollingActive = true;
+    this.pollingError = null;
     this.pollPromise = this.pollLoop(sessionId);
+    return true;
   }
 
   async stopPolling(): Promise<void> {
@@ -479,11 +625,21 @@ export class CodexFileTailEngine {
     return events;
   }
 
+  consumePollingError(): Error | null {
+    const error = this.pollingError;
+    this.pollingError = null;
+    return error;
+  }
+
   resetForNewTurn(): void {
     this.tailState = createSessionTailState();
     this.pendingEvents = [];
     this._turnCompleteEmitted = false;
     this._usageEmitted = false;
+    this.pollingError = null;
+    this.lastEventAt = 0;
+    this.lastPollAt = 0;
+    this.consecutiveReadFailures = 0;
   }
 
   // -----------------------------------------------------------------------
@@ -491,24 +647,32 @@ export class CodexFileTailEngine {
   // -----------------------------------------------------------------------
 
   private async pollLoop(sessionId: string): Promise<void> {
-    while (this.pollingActive) {
-      const events = this.drainSessionFileEvents(sessionId);
-      if (events.length > 0) {
-        this.pendingEvents.push(...events);
-        this.lastEventAt = Date.now();
-        this.trackTailFlags(events);
+    try {
+      while (this.pollingActive) {
+        const events = this.drainSessionFileEvents(sessionId);
+        if (events.length > 0) {
+          this.pendingEvents.push(...events);
+          this.lastEventAt = Date.now();
+          this.trackTailFlags(events);
+        }
+        this.lastPollAt = Date.now();
+        await sleep(100);
       }
-      this.lastPollAt = Date.now();
-      await sleep(100);
-    }
 
-    // Final drain after stop
-    const finalEvents = this.drainSessionFileEvents(sessionId);
-    if (finalEvents.length > 0) {
-      this.pendingEvents.push(...finalEvents);
-      this.trackTailFlags(finalEvents);
+      // Final drain after stop
+      const finalEvents = this.drainSessionFileEvents(sessionId);
+      if (finalEvents.length > 0) {
+        this.pendingEvents.push(...finalEvents);
+        this.trackTailFlags(finalEvents);
+      }
+    } catch (error: unknown) {
+      this.pollingError = error instanceof Error
+        ? error
+        : new Error(String(error));
+      this.pollingActive = false;
+    } finally {
+      this.lastPollAt = Date.now();
     }
-    this.lastPollAt = Date.now();
   }
 
   private drainSessionFileEvents(sessionId: string): StreamChunk[] {
@@ -559,7 +723,12 @@ export class CodexFileTailEngine {
     return chunks;
   }
 
-  private findSessionFile(sessionId: string): string | null {
+  private findSessionFile(sessionId: string, sessionFilePath?: string): string | null {
+    if (sessionFilePath && fs.existsSync(sessionFilePath)) {
+      this.tailSessionFile = sessionFilePath;
+      return sessionFilePath;
+    }
+
     if (this.tailSessionFile) {
       try {
         if (fs.existsSync(this.tailSessionFile)) {

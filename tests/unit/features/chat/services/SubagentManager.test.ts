@@ -5,7 +5,7 @@ import { join } from 'path';
 import type { SubagentInfo, ToolCallInfo } from '@/core/types';
 import { SubagentManager } from '@/features/chat/services/SubagentManager';
 
-jest.mock('@/features/chat/rendering', () => ({
+jest.mock('@/features/chat/rendering/SubagentRenderer', () => ({
   createSubagentBlock: jest.fn().mockImplementation((_parentEl: any, toolId: string, input: any) => ({
     wrapperEl: { querySelector: jest.fn().mockReturnValue(null) },
     contentEl: {},
@@ -1117,7 +1117,7 @@ Only this is the final result.
     });
 
     it('does not increment spawned counter when rendering throws', () => {
-      const { createSubagentBlock } = jest.requireMock('@/features/chat/rendering');
+      const { createSubagentBlock } = jest.requireMock('@/features/chat/rendering/SubagentRenderer');
       createSubagentBlock.mockImplementationOnce(() => { throw new Error('DOM error'); });
 
       const { manager } = createManager();
@@ -1245,7 +1245,7 @@ Only this is the final result.
     });
 
     it('adds tool call to sync subagent', () => {
-      const { addSubagentToolCall } = jest.requireMock('@/features/chat/rendering');
+      const { addSubagentToolCall } = jest.requireMock('@/features/chat/rendering/SubagentRenderer');
       const { manager } = createManager();
       const parentEl = createMockEl();
 
@@ -1264,7 +1264,7 @@ Only this is the final result.
     });
 
     it('updates tool result in sync subagent', () => {
-      const { updateSubagentToolResult } = jest.requireMock('@/features/chat/rendering');
+      const { updateSubagentToolResult } = jest.requireMock('@/features/chat/rendering/SubagentRenderer');
       const { manager } = createManager();
       const parentEl = createMockEl();
 
@@ -1284,7 +1284,7 @@ Only this is the final result.
     });
 
     it('finalizes sync subagent and removes from map', () => {
-      const { finalizeSubagentBlock } = jest.requireMock('@/features/chat/rendering');
+      const { finalizeSubagentBlock } = jest.requireMock('@/features/chat/rendering/SubagentRenderer');
       const { manager } = createManager();
       const parentEl = createMockEl();
 
@@ -1299,7 +1299,7 @@ Only this is the final result.
     });
 
     it('extracts result from SDK toolUseResult.content for sync subagent', () => {
-      const { finalizeSubagentBlock } = jest.requireMock('@/features/chat/rendering');
+      const { finalizeSubagentBlock } = jest.requireMock('@/features/chat/rendering/SubagentRenderer');
       const { manager } = createManager();
       const parentEl = createMockEl();
 
@@ -1333,7 +1333,7 @@ Only this is the final result.
     });
 
     it('ignores tool call for nonexistent subagent', () => {
-      const { addSubagentToolCall } = jest.requireMock('@/features/chat/rendering');
+      const { addSubagentToolCall } = jest.requireMock('@/features/chat/rendering/SubagentRenderer');
       const { manager } = createManager();
 
       manager.addSyncToolCall('nonexistent', {

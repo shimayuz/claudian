@@ -1,7 +1,7 @@
 import type ClaudianPlugin from '../../main';
 import type { CursorContext } from '../../utils/editor';
-import type { McpServerManager } from '../mcp';
-import type { ChatRuntime } from '../runtime';
+import type { McpServerManager } from '../mcp/McpServerManager';
+import type { ChatRuntime } from '../runtime/ChatRuntime';
 import type {
   AgentDefinition,
   Conversation,
@@ -63,9 +63,6 @@ export interface ProviderSettingsReconciler {
   ): { changed: boolean; invalidatedConversations: Conversation[] };
 
   normalizeModelVariantSettings(settings: Record<string, unknown>): boolean;
-
-  /** Migrate legacy CLI path fields. Returns true if settings were modified. */
-  migrateCliPaths(settings: Record<string, unknown>, hostname: string): boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +144,16 @@ export interface ProviderUIOption {
   value: string;
   label: string;
   description?: string;
+  /** Optional group label for visual separators in dropdowns. */
+  group?: string;
+  /** Per-option icon override (e.g. when mixing providers in a single dropdown). */
+  providerIcon?: ProviderIconSvg;
+}
+
+/** SVG icon descriptor for provider branding in selectors. */
+export interface ProviderIconSvg {
+  viewBox: string;
+  path: string;
 }
 
 /** Extended option with token count for budget-based reasoning controls. */
@@ -195,6 +202,9 @@ export interface ProviderChatUIConfig {
 
   /** Optional permission-mode toggle descriptor. Return null when the provider exposes no permission toggle UI. */
   getPermissionModeToggle?(): ProviderPermissionModeToggleConfig | null;
+
+  /** SVG icon for the provider (shown next to model names in selectors). */
+  getProviderIcon?(): ProviderIconSvg | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -43,7 +43,7 @@ describe('codexSettingsReconciler', () => {
     );
 
     expect(result.changed).toBe(true);
-    expect(settings.model).toBe('gpt-5.4');
+    expect(settings.model).toBe('gpt-5.4-mini');
     expect(settings.lastCodexEnvHash).toBe('');
   });
 });

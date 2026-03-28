@@ -58,21 +58,13 @@ function mergeProviderSettings(
 
 export class ProviderSettingsCoordinator {
   static normalizeProviderSelection(settings: Record<string, unknown>): boolean {
-    // Migrate legacy field name
-    let migrated = false;
-    if ('activeProvider' in settings) {
-      settings.settingsProvider = settings.activeProvider;
-      delete settings.activeProvider;
-      migrated = true;
-    }
-
     const current = settings.settingsProvider;
     const next = current === 'codex' && settings.codexEnabled !== false
       ? 'codex'
       : 'claude';
 
     if (settings.settingsProvider === next) {
-      return migrated;
+      return false;
     }
 
     settings.settingsProvider = next;

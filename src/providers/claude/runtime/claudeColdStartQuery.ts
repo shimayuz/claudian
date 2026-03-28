@@ -1,12 +1,12 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import { query as agentQuery } from '@anthropic-ai/claude-agent-sdk';
 
-import { ProviderSettingsCoordinator } from '../../../core/providers';
+import { ProviderSettingsCoordinator } from '../../../core/providers/ProviderSettingsCoordinator';
 import type ClaudianPlugin from '../../../main';
 import { getEnhancedPath, getMissingNodeError, parseEnvironmentVariables } from '../../../utils/env';
 import { getVaultPath } from '../../../utils/path';
 import { extractAssistantText } from '../aux/extractAssistantText';
-import { type EffortLevel, isAdaptiveThinkingModel, THINKING_BUDGETS } from '../types';
+import { type EffortLevel, isAdaptiveThinkingModel, THINKING_BUDGETS } from '../types/models';
 import { createCustomSpawnFunction } from './customSpawn';
 
 export interface ColdStartQueryConfig {

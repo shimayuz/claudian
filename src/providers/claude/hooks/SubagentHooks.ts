@@ -1,6 +1,6 @@
 import type { HookCallbackMatcher } from '@anthropic-ai/claude-agent-sdk';
 
-import type { SubagentRuntimeState } from '../../../core/runtime';
+import type { SubagentRuntimeState } from '../../../core/runtime/types';
 
 export type SubagentHookState = SubagentRuntimeState;
 

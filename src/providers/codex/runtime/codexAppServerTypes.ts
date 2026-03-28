@@ -171,7 +171,16 @@ export interface WebSearchItem {
   type: 'webSearch';
   id: string;
   query?: string;
-  action?: { type?: string; query?: string };
+  queries?: string[];
+  url?: string;
+  pattern?: string;
+  action?: {
+    type?: string;
+    query?: string;
+    queries?: string[];
+    url?: string;
+    pattern?: string;
+  };
   status?: string;
 }
 

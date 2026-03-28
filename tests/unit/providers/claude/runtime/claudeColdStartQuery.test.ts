@@ -23,7 +23,7 @@ jest.mock('@/utils/env', () => ({
   findNodeExecutable: jest.fn().mockReturnValue('/usr/bin/node'),
 }));
 
-jest.mock('@/core/providers', () => ({
+jest.mock('@/core/providers/ProviderSettingsCoordinator', () => ({
   ProviderSettingsCoordinator: {
     getProviderSettingsSnapshot: jest.fn().mockReturnValue({
       model: 'claude-sonnet-4-5',

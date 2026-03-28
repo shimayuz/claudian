@@ -12,18 +12,18 @@ patchSetMaxListenersForElectron();
 import type { Editor, MarkdownView } from 'obsidian';
 import { Notice, Plugin } from 'obsidian';
 
-import type { SharedAppStorage } from './core/bootstrap';
-import { DEFAULT_CLAUDIAN_SETTINGS } from './core/bootstrap';
-import { McpServerManager } from './core/mcp';
-import {
-  type AppAgentManager,
-  type AppPluginManager,
-  DEFAULT_CHAT_PROVIDER_ID,
-  type ProviderCliResolver,
-  type ProviderId,
-  ProviderRegistry,
-  ProviderSettingsCoordinator,
-} from './core/providers';
+import { DEFAULT_CLAUDIAN_SETTINGS } from './core/bootstrap/defaultSettings';
+import type { SharedAppStorage } from './core/bootstrap/storage';
+import { McpServerManager } from './core/mcp/McpServerManager';
+import { ProviderRegistry } from './core/providers/ProviderRegistry';
+import { ProviderSettingsCoordinator } from './core/providers/ProviderSettingsCoordinator';
+import type {
+  AppAgentManager,
+  AppPluginManager,
+  ProviderCliResolver,
+  ProviderId,
+} from './core/providers/types';
+import { DEFAULT_CHAT_PROVIDER_ID } from './core/providers/types';
 import type {
   ClaudianSettings,
   Conversation,
@@ -36,7 +36,7 @@ import {
 import { ClaudianView } from './features/chat/ClaudianView';
 import { type InlineEditContext, InlineEditModal } from './features/inline-edit/ui/InlineEditModal';
 import { ClaudianSettingTab } from './features/settings/ClaudianSettings';
-import { setLocale } from './i18n';
+import { setLocale } from './i18n/i18n';
 import type { Locale } from './i18n/types';
 import {
   type ClaudeStorageService,
@@ -44,7 +44,7 @@ import {
   createClaudeCliResolver,
   createClaudePluginManager,
   createClaudeStorage,
-} from './providers/claude/app';
+} from './providers/claude/app/ClaudeWorkspaceServices';
 import { resolveCodexCliPath } from './providers/codex/runtime/CodexBinaryLocator';
 import { buildCursorContext } from './utils/editor';
 import { getHostnameKey } from './utils/env';
@@ -104,14 +104,6 @@ export default class ClaudianPlugin extends Plugin {
       id: 'inline-edit',
       name: 'Inline edit',
       editorCallback: async (editor: Editor, view: MarkdownView) => {
-        // Inline edit is Claude-only
-        const activeTab = this.getView()?.getActiveTab();
-        const activeProviderId = activeTab?.service?.providerId ?? activeTab?.providerId ?? 'claude';
-        if (activeProviderId !== 'claude') {
-          new Notice('Inline edit is only available with the Claude provider.');
-          return;
-        }
-
         const selectedText = editor.getSelection();
         const notePath = view.file?.path || 'unknown';
 
@@ -249,7 +241,7 @@ export default class ClaudianPlugin extends Plugin {
 
   /** Loads settings and conversations from persistent storage. */
   async loadSettings() {
-    // Initialize Claude storage (handles migration if needed)
+    // Initialize Claude storage
     this.claudeStorage = createClaudeStorage(this);
     // The shared app storage is backed by the same StorageService instance
     this.storage = this.claudeStorage;
@@ -275,13 +267,6 @@ export default class ClaudianPlugin extends Plugin {
       this.settings as unknown as Record<string, unknown>,
     );
     const didNormalizeModelVariants = this.normalizeModelVariantSettings();
-
-    // Migrate legacy CLI paths — intentionally Claude-only (Codex has no CLI paths)
-    const hostname = getHostnameKey();
-    const didMigrateCliPath = ProviderRegistry.getSettingsReconciler().migrateCliPaths(
-      this.settings as unknown as Record<string, unknown>,
-      hostname,
-    );
 
     // Load all conversations from session metadata
     const allMetadata = await this.storage.sessions.listMetadata();
@@ -321,7 +306,7 @@ export default class ClaudianPlugin extends Plugin {
       this.settings as unknown as Record<string, unknown>,
     );
 
-    if (changed || didMigrateCliPath || didNormalizeModelVariants || didNormalizeProviderSelection) {
+    if (changed || didNormalizeModelVariants || didNormalizeProviderSelection) {
       await this.saveSettings();
     }
 

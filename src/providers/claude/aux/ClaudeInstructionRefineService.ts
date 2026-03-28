@@ -1,4 +1,4 @@
-import { buildRefineSystemPrompt } from '../../../core/prompt';
+import { buildRefineSystemPrompt } from '../../../core/prompt/instructionRefine';
 import type { RefineProgressCallback } from '../../../core/providers/types';
 import type { InstructionRefineResult } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';

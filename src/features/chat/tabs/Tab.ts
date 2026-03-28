@@ -1,46 +1,43 @@
 import type { Component } from 'obsidian';
 import { Notice } from 'obsidian';
 
-import type { McpServerManager } from '../../../core/mcp';
-import type { ProviderUIOption } from '../../../core/providers';
-import {
-  getProviderForModel,
-  type ProviderCapabilities,
-  type ProviderChatUIConfig,
-  type ProviderId,
-  ProviderRegistry,
-  ProviderSettingsCoordinator,
-} from '../../../core/providers';
-import type { ChatRuntime } from '../../../core/runtime';
+import type { McpServerManager } from '../../../core/mcp/McpServerManager';
+import { getProviderForModel } from '../../../core/providers/modelRouting';
+import { ProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import { ProviderSettingsCoordinator } from '../../../core/providers/ProviderSettingsCoordinator';
+import type {
+  ProviderCapabilities,
+  ProviderChatUIConfig,
+  ProviderId,
+  ProviderUIOption,
+} from '../../../core/providers/types';
+import type { ChatRuntime } from '../../../core/runtime/ChatRuntime';
 import type { ChatMessage, Conversation, SlashCommand, StreamChunk } from '../../../core/types';
-import { t } from '../../../i18n';
+import { t } from '../../../i18n/i18n';
 import type ClaudianPlugin from '../../../main';
 import { SlashCommandDropdown } from '../../../shared/components/SlashCommandDropdown';
 import { getEnhancedPath } from '../../../utils/env';
 import { getVaultPath } from '../../../utils/path';
-import {
-  BrowserSelectionController,
-  CanvasSelectionController,
-  ConversationController,
-  InputController,
-  NavigationController,
-  SelectionController,
-  StreamController,
-} from '../controllers';
-import { cleanupThinkingBlock, MessageRenderer } from '../rendering';
+import { BrowserSelectionController } from '../controllers/BrowserSelectionController';
+import { CanvasSelectionController } from '../controllers/CanvasSelectionController';
+import { ConversationController } from '../controllers/ConversationController';
+import { InputController } from '../controllers/InputController';
+import { NavigationController } from '../controllers/NavigationController';
+import { SelectionController } from '../controllers/SelectionController';
+import { StreamController } from '../controllers/StreamController';
+import { MessageRenderer } from '../rendering/MessageRenderer';
+import { cleanupThinkingBlock } from '../rendering/ThinkingBlockRenderer';
 import { findRewindContext } from '../rewind';
 import { BangBashService } from '../services/BangBashService';
 import { SubagentManager } from '../services/SubagentManager';
-import { ChatState } from '../state';
-import {
-  BangBashModeManager as BangBashModeManagerClass,
-  createInputToolbar,
-  FileContextManager,
-  ImageContextManager,
-  InstructionModeManager as InstructionModeManagerClass,
-  NavigationSidebar,
-  StatusPanel,
-} from '../ui';
+import { ChatState } from '../state/ChatState';
+import { BangBashModeManager as BangBashModeManagerClass } from '../ui/BangBashModeManager';
+import { FileContextManager } from '../ui/FileContext';
+import { ImageContextManager } from '../ui/ImageContext';
+import { createInputToolbar } from '../ui/InputToolbar';
+import { InstructionModeManager as InstructionModeManagerClass } from '../ui/InstructionModeManager';
+import { NavigationSidebar } from '../ui/NavigationSidebar';
+import { StatusPanel } from '../ui/StatusPanel';
 import type { TabData, TabDOMElements, TabId, TabProviderContext } from './types';
 import { generateTabId, TEXTAREA_MAX_HEIGHT_PERCENT, TEXTAREA_MIN_MAX_HEIGHT } from './types';
 
@@ -60,14 +57,20 @@ type TabProviderSettings = Record<string, unknown> & {
 export function getBlankTabModelOptions(
   settings: Record<string, unknown>,
 ): ProviderUIOption[] {
-  const claudeModels = ProviderRegistry.getChatUIConfig('claude').getModelOptions(settings);
+  const claudeConfig = ProviderRegistry.getChatUIConfig('claude');
+  const claudeIcon = claudeConfig.getProviderIcon?.() ?? undefined;
+  const claudeModels = claudeConfig.getModelOptions(settings)
+    .map(m => ({ ...m, group: 'Claude', providerIcon: claudeIcon }));
 
   if (!settings.codexEnabled) {
     return claudeModels;
   }
 
-  const codexModels = ProviderRegistry.getChatUIConfig('codex').getModelOptions(settings);
-  return [...claudeModels, ...codexModels];
+  const codexConfig = ProviderRegistry.getChatUIConfig('codex');
+  const codexIcon = codexConfig.getProviderIcon?.() ?? undefined;
+  const codexModels = codexConfig.getModelOptions(settings)
+    .map(m => ({ ...m, group: 'Codex', providerIcon: codexIcon }));
+  return [...codexModels, ...claudeModels];
 }
 
 export interface TabCreateOptions {
@@ -188,8 +191,11 @@ function applyProviderUIGating(tab: TabData, plugin: ClaudianPlugin): void {
   // Image attachments: Claude and Codex (Codex uses temp-file bridge)
   tab.ui.imageContextManager?.setEnabled(isClaude || capabilities.providerId === 'codex');
 
-  // Context gauge is Claude-only
+  // Context gauge is Claude-only, and only shown when usage data exists
   tab.ui.contextUsageMeter?.setVisible(isClaude);
+  if (isClaude) {
+    tab.ui.contextUsageMeter?.update(tab.state.usage);
+  }
 }
 
 function syncTabProviderServices(
@@ -197,6 +203,7 @@ function syncTabProviderServices(
   plugin: ClaudianPlugin,
 ): void {
   tab.services.instructionRefineService?.cancel();
+  tab.services.instructionRefineService?.resetConversation();
   tab.services.titleGenerationService?.cancel();
   tab.services.instructionRefineService = ProviderRegistry.createInstructionRefineService(plugin, tab.providerId);
   tab.services.titleGenerationService = ProviderRegistry.createTitleGenerationService(plugin, tab.providerId);
@@ -236,7 +243,6 @@ export function onCodexAvailabilityChanged(tab: TabData, plugin: ClaudianPlugin)
 
   syncTabProviderServices(tab, plugin);
   tab.ui.slashCommandDropdown?.resetSdkSkillsCache();
-  tab.ui.modelSelector?.setReady(false);
   refreshTabProviderUI(tab, plugin);
   applyProviderUIGating(tab, plugin);
 }
@@ -461,9 +467,7 @@ export async function initializeTabService(
 
     const runtime = ProviderRegistry.createChatRuntime({ plugin, mcpManager, providerId });
     service = runtime;
-    unsubscribeReadyState = runtime.onReadyStateChange((ready) => {
-      tab.ui.modelSelector?.setReady(ready);
-    });
+    unsubscribeReadyState = runtime.onReadyStateChange(() => {});
     tab.dom.eventCleanups.push(() => unsubscribeReadyState?.());
 
     // Passive sync: set session state without starting the runtime process.
@@ -628,7 +632,7 @@ function initializeInstructionAndTodo(tab: TabData, plugin: ClaudianPlugin): voi
 /**
  * Creates and wires the input toolbar for a tab.
  */
-function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin): void {
+function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin, onProviderChanged?: (providerId: ProviderId) => void): void {
   const { dom } = tab;
 
   const inputToolbar = dom.inputWrapper.createDiv({ cls: 'claudian-input-toolbar' });
@@ -660,6 +664,7 @@ function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin): void {
         tab.draftModel = model;
         const newProvider = getProviderForModel(model, plugin.settings as unknown as Record<string, unknown>);
         tab.providerId = newProvider;
+        onProviderChanged?.(newProvider);
         // Update settings for the new provider
         const uiConfig = ProviderRegistry.getChatUIConfig(newProvider);
         await updateTabProviderSettings(tab, plugin, (settings) => {
@@ -766,6 +771,7 @@ function initializeInputToolbar(tab: TabData, plugin: ClaudianPlugin): void {
 
 export interface InitializeTabUIOptions {
   getSdkCommands?: () => Promise<SlashCommand[]>;
+  onProviderChanged?: (providerId: ProviderId) => void;
 }
 
 /**
@@ -813,7 +819,7 @@ export function initializeTabUI(
   initializeInstructionAndTodo(tab, plugin);
 
   // Initialize input toolbar
-  initializeInputToolbar(tab, plugin);
+  initializeInputToolbar(tab, plugin, options.onProviderChanged);
 
   // Update ChatState callbacks for UI updates
   state.callbacks = {
@@ -1419,6 +1425,7 @@ export async function destroyTab(tab: TabData): Promise<void> {
   tab.ui.bangBashModeManager?.destroy();
   tab.ui.bangBashModeManager = null;
   tab.services.instructionRefineService?.cancel();
+  tab.services.instructionRefineService?.resetConversation();
   tab.services.instructionRefineService = null;
   tab.services.titleGenerationService?.cancel();
   tab.services.titleGenerationService = null;

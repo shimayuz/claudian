@@ -1,4 +1,4 @@
-import { ProviderRegistry } from '@/core/providers';
+import { ProviderRegistry } from '@/core/providers/ProviderRegistry';
 import { ProviderSettingsCoordinator } from '@/core/providers/ProviderSettingsCoordinator';
 import type { Conversation } from '@/core/types';
 
@@ -28,50 +28,12 @@ describe('ProviderSettingsCoordinator', () => {
       expect(settings.settingsProvider).toBe('claude');
     });
 
-    it('migrates legacy activeProvider field to settingsProvider', () => {
-      const settings: Record<string, unknown> = {
-        activeProvider: 'codex',
-        codexEnabled: true,
-      };
-
-      const changed = ProviderSettingsCoordinator.normalizeProviderSelection(settings);
-
-      expect(changed).toBe(true);
-      expect(settings.settingsProvider).toBe('codex');
-      expect(settings.activeProvider).toBeUndefined();
-    });
-
-    it('migrates activeProvider even when settingsProvider exists from defaults', () => {
-      const settings: Record<string, unknown> = {
-        settingsProvider: 'claude',  // from defaults
-        activeProvider: 'codex',     // persisted legacy
-        codexEnabled: true,
-      };
-      const changed = ProviderSettingsCoordinator.normalizeProviderSelection(settings);
-      expect(changed).toBe(true);
-      expect(settings.settingsProvider).toBe('codex');
-      expect(settings.activeProvider).toBeUndefined();
-    });
-
     it('returns false when already normalized (no-op)', () => {
       const settings: Record<string, unknown> = {
         settingsProvider: 'claude',
         codexEnabled: false,
       };
       expect(ProviderSettingsCoordinator.normalizeProviderSelection(settings)).toBe(false);
-    });
-
-    it('migrates and normalizes legacy activeProvider in one step', () => {
-      const settings: Record<string, unknown> = {
-        activeProvider: 'codex',
-        codexEnabled: false,
-      };
-
-      const changed = ProviderSettingsCoordinator.normalizeProviderSelection(settings);
-
-      expect(changed).toBe(true);
-      expect(settings.settingsProvider).toBe('claude');
-      expect(settings.activeProvider).toBeUndefined();
     });
   });
 
@@ -228,7 +190,7 @@ describe('ProviderSettingsCoordinator', () => {
 
       ProviderSettingsCoordinator.projectProviderState(settings, 'codex');
 
-      expect(settings.model).toBe('gpt-5.4');
+      expect(settings.model).toBe('gpt-5.4-mini');
       expect(settings.effortLevel).toBe('medium');
     });
   });

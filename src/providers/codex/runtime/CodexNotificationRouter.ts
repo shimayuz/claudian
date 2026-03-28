@@ -208,12 +208,17 @@ export class CodexNotificationRouter {
     if (this.seenWebSearchIds.has(item.id)) return;
     this.seenWebSearchIds.add(item.id);
 
-    const query = item.query ?? item.action?.query ?? '';
     this.emit({
       type: 'tool_use',
       id: item.id,
       name: 'WebSearch',
-      input: { query },
+      input: normalizeCodexToolInput('web_search', {
+        query: item.query ?? '',
+        queries: item.queries ?? [],
+        url: item.url ?? '',
+        pattern: item.pattern ?? '',
+        action: item.action ?? {},
+      }),
     });
   }
 

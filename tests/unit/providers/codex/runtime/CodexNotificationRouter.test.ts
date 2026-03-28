@@ -246,6 +246,29 @@ describe('CodexNotificationRouter', () => {
       });
     });
 
+    it('preserves open_page metadata from webSearch items', () => {
+      router.handleNotification('item/started', {
+        item: {
+          type: 'webSearch',
+          id: 'ws_open',
+          action: {
+            type: 'open_page',
+            url: 'https://example.com/docs',
+          },
+        },
+        threadId: 't1',
+        turnId: 'turn1',
+      });
+
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toMatchObject({
+        type: 'tool_use',
+        id: 'ws_open',
+        name: 'WebSearch',
+        input: { actionType: 'open_page', url: 'https://example.com/docs' },
+      });
+    });
+
     it('maps webSearch item/completed to tool_result chunk', () => {
       router.handleNotification('item/completed', {
         item: {

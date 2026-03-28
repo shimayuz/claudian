@@ -2,7 +2,7 @@ import type { App, ToggleComponent } from 'obsidian';
 import { Modal, Notice, setIcon, Setting } from 'obsidian';
 
 import type { SlashCommand } from '../../../core/types';
-import { t } from '../../../i18n';
+import { t } from '../../../i18n/i18n';
 import type ClaudianPlugin from '../../../main';
 import { extractFirstParagraph, isSkill, normalizeArgumentHint, parseSlashCommandContent, validateCommandName } from '../../../utils/slashCommand';
 

@@ -56,8 +56,4 @@ export const codexSettingsReconciler: ProviderSettingsReconciler = {
   normalizeModelVariantSettings(): boolean {
     return false;
   },
-
-  migrateCliPaths(): boolean {
-    return false;
-  },
 };

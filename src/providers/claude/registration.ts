@@ -1,11 +1,11 @@
-import type { ProviderRegistration } from '../../core/providers';
+import type { ProviderRegistration } from '../../core/providers/types';
 import { InlineEditService as ClaudeInlineEditService } from './aux/ClaudeInlineEditService';
 import { InstructionRefineService as ClaudeInstructionRefineService } from './aux/ClaudeInstructionRefineService';
 import { TitleGenerationService as ClaudeTitleGenerationService } from './aux/ClaudeTitleGenerationService';
 import { CLAUDE_PROVIDER_CAPABILITIES } from './capabilities';
 import { claudeSettingsReconciler } from './env/ClaudeSettingsReconciler';
-import { ClaudeConversationHistoryService } from './history';
-import { ClaudeChatRuntime } from './runtime';
+import { ClaudeConversationHistoryService } from './history/ClaudeConversationHistoryService';
+import { ClaudianService as ClaudeChatRuntime } from './runtime/ClaudeChatRuntime';
 import { ClaudeTaskResultInterpreter } from './runtime/ClaudeTaskResultInterpreter';
 import { claudeChatUIConfig } from './ui/ClaudeChatUIConfig';
 

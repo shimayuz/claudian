@@ -31,9 +31,6 @@ export {
   type TabBarPosition,
 } from './settings';
 
-// Re-export getHostnameKey from utils (moved from settings for architecture compliance)
-export { getHostnameKey } from '../../utils/env';
-
 // Diff types
 export {
   type DiffLine,

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import type { PreparedChatTurn } from '@/core/runtime/types';
@@ -480,6 +481,112 @@ describe('CodexChatRuntime', () => {
         isError: false,
       }));
     });
+
+    it('prefers session-tail tool chunks when a Codex session file is available', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-tail-runtime-'));
+      const sessionFilePath = path.join(tmpDir, 'thread-tail.jsonl');
+      fs.writeFileSync(sessionFilePath, '');
+
+      mockTransportRequest.mockImplementation(async (method: string) => {
+        if (method === 'initialize') {
+          return { userAgent: 'test/0.1', codexHome: '/tmp', platformFamily: 'unix', platformOs: 'macos' };
+        }
+        if (method === 'thread/start') {
+          const response = threadStartResponse('thread-tail');
+          response.thread.path = sessionFilePath;
+          return response;
+        }
+        if (method === 'turn/start') {
+          setTimeout(() => {
+            fs.appendFileSync(
+              sessionFilePath,
+              [
+                JSON.stringify({
+                  timestamp: '2026-03-28T10:00:01.000Z',
+                  type: 'response_item',
+                  payload: {
+                    type: 'function_call',
+                    name: 'exec_command',
+                    arguments: '{"command":"cat src/main.ts"}',
+                    call_id: 'call_tail_1',
+                  },
+                }),
+                JSON.stringify({
+                  timestamp: '2026-03-28T10:00:02.000Z',
+                  type: 'response_item',
+                  payload: {
+                    type: 'function_call_output',
+                    call_id: 'call_tail_1',
+                    output: 'Exit code: 0\nOutput:\nimport x from "./main";',
+                  },
+                }),
+              ].join('\n') + '\n',
+            );
+
+            emitNotification('item/started', {
+              item: {
+                type: 'commandExecution',
+                id: 'call_wrong_1',
+                command: 'echo wrong',
+                cwd: '/test/vault',
+                processId: '1',
+                source: 'unifiedExecStartup',
+                status: 'inProgress',
+                commandActions: [{ type: 'unknown', command: 'echo wrong' }],
+                aggregatedOutput: null,
+                exitCode: null,
+                durationMs: null,
+              },
+              threadId: 'thread-tail',
+              turnId: 'turn-tail',
+            });
+            emitNotification('item/completed', {
+              item: {
+                type: 'commandExecution',
+                id: 'call_wrong_1',
+                command: 'echo wrong',
+                cwd: '/test/vault',
+                processId: '1',
+                source: 'unifiedExecStartup',
+                status: 'completed',
+                commandActions: [],
+                aggregatedOutput: 'wrong\n',
+                exitCode: 0,
+                durationMs: 10,
+              },
+              threadId: 'thread-tail',
+              turnId: 'turn-tail',
+            });
+            emitNotification('turn/completed', {
+              threadId: 'thread-tail',
+              turn: { id: 'turn-tail', items: [], status: 'completed', error: null },
+            });
+          }, 0);
+          return turnStartResponse('turn-tail');
+        }
+        return {};
+      });
+
+      try {
+        const chunks = await collectChunks(runtime.query(createTurn()));
+
+        expect(chunks).toContainEqual(expect.objectContaining({
+          type: 'tool_use',
+          id: 'call_tail_1',
+          name: 'Bash',
+          input: { command: 'cat src/main.ts' },
+        }));
+        expect(chunks).toContainEqual(expect.objectContaining({
+          type: 'tool_result',
+          id: 'call_tail_1',
+          content: 'import x from "./main";',
+          isError: false,
+        }));
+        expect(chunks).not.toContainEqual(expect.objectContaining({ id: 'call_wrong_1' }));
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    }, 10000);
 
     it('emits error then done on failed turn', async () => {
       mockTransportRequest.mockImplementation(async (method: string) => {

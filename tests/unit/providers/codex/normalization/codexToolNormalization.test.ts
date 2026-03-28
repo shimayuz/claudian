@@ -1,10 +1,13 @@
 import {
   isCodexToolOutputError,
+  normalizeCodexMcpToolInput,
+  normalizeCodexMcpToolName,
+  normalizeCodexMcpToolState,
   normalizeCodexToolInput,
   normalizeCodexToolName,
   normalizeCodexToolResult,
   parseCodexArguments,
-} from '@/providers/codex/normalization';
+} from '@/providers/codex/normalization/codexToolNormalization';
 
 describe('normalizeCodexToolName', () => {
   it.each([
@@ -27,6 +30,7 @@ describe('normalizeCodexToolName', () => {
     'spawn_agent',
     'send_input',
     'wait',
+    'wait_agent',
     'resume_agent',
     'close_agent',
   ])('preserves native tool %s', (name) => {
@@ -85,12 +89,36 @@ describe('normalizeCodexToolInput', () => {
 
   it('normalizes request_user_input questions', () => {
     const result = normalizeCodexToolInput('request_user_input', {
-      questions: [{ question: 'Update tests?', id: 'q1' }],
+      questions: [{
+        question: 'Update tests?',
+        id: 'q1',
+        options: [
+          { label: 'Yes', description: 'Update tests too' },
+          { label: 'No', description: 'Leave tests alone' },
+        ],
+        multi_select: true,
+      }],
     });
 
     expect(result.questions).toEqual([
-      { question: 'Update tests?', id: 'q1' },
+      {
+        question: 'Update tests?',
+        id: 'q1',
+        header: 'Q1',
+        options: [
+          { label: 'Yes', description: 'Update tests too' },
+          { label: 'No', description: 'Leave tests alone' },
+        ],
+        multiSelect: true,
+      },
     ]);
+  });
+
+  it('normalizes shell command arrays into a single command string', () => {
+    const result = normalizeCodexToolInput('shell', {
+      command: ['bash', '-lc', 'git log -1 --stat'],
+    });
+    expect(result).toEqual({ command: 'bash -lc git log -1 --stat' });
   });
 
   it('normalizes view_image path to file_path', () => {
@@ -102,12 +130,49 @@ describe('normalizeCodexToolInput', () => {
     const result = normalizeCodexToolInput('web_search_call', {
       action: { query: 'obsidian api' },
     });
-    expect(result).toEqual({ query: 'obsidian api' });
+    expect(result).toEqual({ actionType: 'search', query: 'obsidian api' });
   });
 
   it('normalizes web_search with query', () => {
     const result = normalizeCodexToolInput('web_search', { query: 'test' });
-    expect(result).toEqual({ query: 'test' });
+    expect(result).toEqual({ actionType: 'search', query: 'test' });
+  });
+
+  it('normalizes web_search_call open_page actions', () => {
+    const result = normalizeCodexToolInput('web_search_call', {
+      action: { type: 'open_page', url: 'https://example.com/docs' },
+    });
+    expect(result).toEqual({ actionType: 'open_page', url: 'https://example.com/docs' });
+  });
+
+  it('normalizes web_search_call find_in_page actions', () => {
+    const result = normalizeCodexToolInput('web_search_call', {
+      action: {
+        type: 'find_in_page',
+        url: 'https://example.com/docs',
+        pattern: 'tools',
+      },
+    });
+    expect(result).toEqual({
+      actionType: 'find_in_page',
+      url: 'https://example.com/docs',
+      pattern: 'tools',
+    });
+  });
+
+  it('deduplicates web_search queries and preserves the primary query', () => {
+    const result = normalizeCodexToolInput('web_search_call', {
+      action: {
+        type: 'search',
+        query: 'obsidian plugin API',
+        queries: ['obsidian plugin API', 'obsidian plugin API', 'obsidian docs'],
+      },
+    });
+    expect(result).toEqual({
+      actionType: 'search',
+      query: 'obsidian plugin API',
+      queries: ['obsidian plugin API', 'obsidian docs'],
+    });
   });
 
   it('preserves apply_patch input', () => {
@@ -116,10 +181,56 @@ describe('normalizeCodexToolInput', () => {
     expect(result).toEqual(input);
   });
 
+  it('normalizes raw apply_patch input into patch text', () => {
+    const result = normalizeCodexToolInput('apply_patch', {
+      raw: '*** Begin Patch\n*** Update File: foo.ts\n*** End Patch',
+    });
+    expect(result).toEqual({
+      patch: '*** Begin Patch\n*** Update File: foo.ts\n*** End Patch',
+    });
+  });
+
   it('preserves spawn_agent input', () => {
     const input = { message: 'Do something', agent_type: 'code-writer' };
     const result = normalizeCodexToolInput('spawn_agent', input);
     expect(result).toEqual(input);
+  });
+});
+
+describe('Codex MCP normalization helpers', () => {
+  it('normalizes MCP tool names', () => {
+    expect(normalizeCodexMcpToolName('filesystem', 'read_file')).toBe('mcp__filesystem__read_file');
+  });
+
+  it('normalizes MCP arguments from string and object inputs', () => {
+    expect(normalizeCodexMcpToolInput('{"path":"README.md"}')).toEqual({ path: 'README.md' });
+    expect(normalizeCodexMcpToolInput({ path: 'README.md' })).toEqual({ path: 'README.md' });
+  });
+
+  it('normalizes MCP completed state with structured text results', () => {
+    expect(normalizeCodexMcpToolState(
+      'completed',
+      { content: [{ text: 'line 1' }, { text: 'line 2' }] },
+      undefined,
+    )).toEqual({
+      isTerminal: true,
+      isError: false,
+      status: 'completed',
+      result: 'line 1\nline 2',
+    });
+  });
+
+  it('normalizes MCP failed state with error text', () => {
+    expect(normalizeCodexMcpToolState(
+      'failed',
+      undefined,
+      'Permission denied',
+    )).toEqual({
+      isTerminal: true,
+      isError: true,
+      status: 'error',
+      result: 'Permission denied',
+    });
   });
 });
 

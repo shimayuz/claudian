@@ -1,6 +1,6 @@
 import { Notice, setIcon } from 'obsidian';
 
-import { tryParseClipboardConfig } from '../../../core/mcp';
+import { tryParseClipboardConfig } from '../../../core/mcp/McpConfigParser';
 import { testMcpServer } from '../../../core/mcp/McpTester';
 import type { ManagedMcpServer, McpServerConfig, McpServerType } from '../../../core/types';
 import { DEFAULT_MCP_SERVER, getMcpServerType } from '../../../core/types';

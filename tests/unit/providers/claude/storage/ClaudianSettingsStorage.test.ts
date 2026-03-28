@@ -5,7 +5,7 @@ import {
   ClaudianSettingsStorage,
   normalizeBlockedCommands,
 } from '@/providers/claude/storage/ClaudianSettingsStorage';
-import { DEFAULT_SETTINGS } from '@/providers/claude/types';
+import { DEFAULT_SETTINGS } from '@/providers/claude/types/settings';
 
 const mockAdapter = {
   exists: jest.fn(),
@@ -214,80 +214,6 @@ describe('ClaudianSettingsStorage', () => {
       const writtenContent = JSON.parse(writeCall[1]);
       expect(writtenContent.model).toBe('claude-opus-4-5');
       expect(writtenContent.userName).toBe('ExistingUser');
-    });
-  });
-
-  describe('legacy activeConversationId', () => {
-    it('should read legacy activeConversationId when present', async () => {
-      mockAdapter.exists.mockResolvedValue(true);
-      mockAdapter.read.mockResolvedValue(JSON.stringify({
-        activeConversationId: 'conv-123',
-      }));
-
-      const legacyId = await storage.getLegacyActiveConversationId();
-
-      expect(legacyId).toBe('conv-123');
-    });
-
-    it('should return null when legacy activeConversationId is missing', async () => {
-      mockAdapter.exists.mockResolvedValue(true);
-      mockAdapter.read.mockResolvedValue(JSON.stringify({
-        model: 'claude-haiku-4-5',
-      }));
-
-      const legacyId = await storage.getLegacyActiveConversationId();
-
-      expect(legacyId).toBeNull();
-    });
-
-    it('should clear legacy activeConversationId from file', async () => {
-      mockAdapter.exists.mockResolvedValue(true);
-      mockAdapter.read.mockResolvedValue(JSON.stringify({
-        activeConversationId: 'conv-123',
-        model: 'claude-haiku-4-5',
-      }));
-
-      await storage.clearLegacyActiveConversationId();
-
-      const writeCall = mockAdapter.write.mock.calls[0];
-      const writtenContent = JSON.parse(writeCall[1]);
-      expect(writtenContent.activeConversationId).toBeUndefined();
-      expect(writtenContent.model).toBe('claude-haiku-4-5');
-    });
-  });
-
-  describe('getLegacyActiveConversationId - file missing', () => {
-    it('should return null when file does not exist', async () => {
-      mockAdapter.exists.mockResolvedValue(false);
-
-      const result = await storage.getLegacyActiveConversationId();
-
-      expect(result).toBeNull();
-      expect(mockAdapter.read).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('clearLegacyActiveConversationId - file missing', () => {
-    it('should return early when file does not exist', async () => {
-      mockAdapter.exists.mockResolvedValue(false);
-
-      await storage.clearLegacyActiveConversationId();
-
-      expect(mockAdapter.read).not.toHaveBeenCalled();
-      expect(mockAdapter.write).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('clearLegacyActiveConversationId - no key present', () => {
-    it('should not write when activeConversationId key is absent', async () => {
-      mockAdapter.exists.mockResolvedValue(true);
-      mockAdapter.read.mockResolvedValue(JSON.stringify({
-        model: 'claude-haiku-4-5',
-      }));
-
-      await storage.clearLegacyActiveConversationId();
-
-      expect(mockAdapter.write).not.toHaveBeenCalled();
     });
   });
 

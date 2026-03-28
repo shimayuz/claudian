@@ -1,6 +1,6 @@
-import { parseClipboardConfig, tryParseClipboardConfig } from '@/core/mcp';
+import { parseClipboardConfig, tryParseClipboardConfig } from '@/core/mcp/McpConfigParser';
 import type { VaultFileAdapter } from '@/core/storage/VaultFileAdapter';
-import { McpStorage } from '@/providers/claude/storage';
+import { McpStorage } from '@/providers/claude/storage/McpStorage';
 
 /** Mock adapter with exposed store for test assertions. */
 type MockAdapter = VaultFileAdapter & { _store: Record<string, string> };

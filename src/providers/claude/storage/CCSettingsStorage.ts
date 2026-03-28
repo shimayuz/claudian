@@ -16,42 +16,15 @@ import type { VaultFileAdapter } from '../../../core/storage/VaultFileAdapter';
 import type {
   CCPermissions,
   CCSettings,
-  LegacyPermission,
   PermissionRule,
-} from '../types';
-import { DEFAULT_CC_PERMISSIONS, DEFAULT_CC_SETTINGS, legacyPermissionsToCCPermissions } from '../types';
-import { CLAUDIAN_ONLY_FIELDS } from './migrationConstants';
+} from '../types/settings';
+import { DEFAULT_CC_PERMISSIONS, DEFAULT_CC_SETTINGS } from '../types/settings';
 
 /** Path to CC settings file relative to vault root. */
 export const CC_SETTINGS_PATH = '.claude/settings.json';
 
 /** Schema URL for CC settings. */
 const CC_SETTINGS_SCHEMA = 'https://json.schemastore.org/claude-code-settings.json';
-
-function hasClaudianOnlyFields(data: Record<string, unknown>): boolean {
-  return Object.keys(data).some(key => CLAUDIAN_ONLY_FIELDS.has(key));
-}
-
-/**
- * Check if a settings object uses the legacy Claudian permissions format.
- * Legacy format: permissions is an array of objects with toolName/pattern.
- */
-export function isLegacyPermissionsFormat(data: unknown): data is { permissions: LegacyPermission[] } {
-  if (!data || typeof data !== 'object') return false;
-  const obj = data as Record<string, unknown>;
-
-  if (!Array.isArray(obj.permissions)) return false;
-  if (obj.permissions.length === 0) return false;
-
-  // Check if first item has legacy structure
-  const first = obj.permissions[0];
-  return (
-    typeof first === 'object' &&
-    first !== null &&
-    'toolName' in first &&
-    'pattern' in first
-  );
-}
 
 function normalizeRuleList(value: unknown): PermissionRule[] {
   if (!Array.isArray(value)) return [];
@@ -98,19 +71,6 @@ export class CCSettingsStorage {
     const content = await this.adapter.read(CC_SETTINGS_PATH);
     const stored = JSON.parse(content) as Record<string, unknown>;
 
-    // Check for legacy format and migrate if needed
-    if (isLegacyPermissionsFormat(stored)) {
-      const legacyPerms = stored.permissions as LegacyPermission[];
-      const ccPerms = legacyPermissionsToCCPermissions(legacyPerms);
-
-      // Return migrated permissions but keep other CC fields
-      return {
-        $schema: CC_SETTINGS_SCHEMA,
-        ...stored,
-        permissions: ccPerms,
-      };
-    }
-
     return {
       $schema: CC_SETTINGS_SCHEMA,
       ...stored,
@@ -121,32 +81,14 @@ export class CCSettingsStorage {
   /**
    * Save CC settings to .claude/settings.json.
    * Preserves unknown fields for CC compatibility.
-   *
-   * @param stripClaudianFields - If true, remove Claudian-only fields (only during migration)
    */
-  async save(settings: CCSettings, stripClaudianFields: boolean = false): Promise<void> {
+  async save(settings: CCSettings): Promise<void> {
     // Load existing to preserve CC-specific fields we don't manage
     let existing: Record<string, unknown> = {};
     if (await this.adapter.exists(CC_SETTINGS_PATH)) {
       try {
         const content = await this.adapter.read(CC_SETTINGS_PATH);
-        const parsed = JSON.parse(content) as Record<string, unknown>;
-
-        // Only strip Claudian-only fields during explicit migration
-        if (stripClaudianFields && (isLegacyPermissionsFormat(parsed) || hasClaudianOnlyFields(parsed))) {
-          existing = {};
-          for (const [key, value] of Object.entries(parsed)) {
-            if (!CLAUDIAN_ONLY_FIELDS.has(key)) {
-              existing[key] = value;
-            }
-          }
-          // Also strip legacy permissions array format
-          if (Array.isArray(existing.permissions)) {
-            delete existing.permissions;
-          }
-        } else {
-          existing = parsed;
-        }
+        existing = JSON.parse(content) as Record<string, unknown>;
       } catch {
         // Parse error - start fresh with default settings
       }

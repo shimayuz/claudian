@@ -6,14 +6,14 @@ import {
   buildSystemPrompt,
   computeSystemPromptKey,
   type SystemPromptSettings,
-} from '../../../core/prompt';
-import { ProviderSettingsCoordinator } from '../../../core/providers';
+} from '../../../core/prompt/mainAgent';
+import { ProviderSettingsCoordinator } from '../../../core/providers/ProviderSettingsCoordinator';
 import type { ProviderCapabilities, ProviderId } from '../../../core/providers/types';
+import type { ChatRuntime } from '../../../core/runtime/ChatRuntime';
 import type {
   ApprovalCallback,
   AskUserQuestionCallback,
   ChatRewindResult,
-  ChatRuntime,
   ChatRuntimeConversationState,
   ChatRuntimeEnsureReadyOptions,
   ChatRuntimeQueryOptions,
@@ -22,7 +22,7 @@ import type {
   PreparedChatTurn,
   SessionUpdateResult,
   SubagentRuntimeState,
-} from '../../../core/runtime';
+} from '../../../core/runtime/types';
 import type { ChatMessage, Conversation, SlashCommand, StreamChunk } from '../../../core/types';
 import type ClaudianPlugin from '../../../main';
 import { getEnhancedPath, parseEnvironmentVariables } from '../../../utils/env';
@@ -43,6 +43,7 @@ import type {
 import { CodexNotificationRouter } from './CodexNotificationRouter';
 import { CodexRpcTransport } from './CodexRpcTransport';
 import { CodexServerRequestRouter } from './CodexServerRequestRouter';
+import { CodexFileTailEngine } from './CodexSessionFileTail';
 import { CodexSessionManager } from './CodexSessionManager';
 
 const SANDBOX_MAP: Record<string, { approvalPolicy: string; sandbox: string }> = {
@@ -173,18 +174,115 @@ export class CodexChatRuntime implements ChatRuntime {
     this.currentQueryThreadId = null;
     this.pendingTurnNotifications = [];
     let inputBundle: CodexInputBundle | null = null;
+    let tailEngine: CodexFileTailEngine | null = null;
+    let tailDrainInterval: ReturnType<typeof setInterval> | null = null;
+    let toolSourceMode: 'transcript' | 'fallback' = 'fallback';
+    let tailDonePromise: Promise<void> | null = null;
+    let transcriptSessionFilePath: string | null = null;
 
     const model = this.resolveModel(queryOptions);
     const promptSettings = this.getSystemPromptSettings();
     const promptText = buildSystemPrompt(promptSettings);
 
-    // Set up notification router to push chunks
-    this.notificationRouter = new CodexNotificationRouter((chunk) => {
+    const enqueueChunk = (chunk: StreamChunk): void => {
       this.chunkBuffer.push(chunk);
       if (this.chunkResolve) {
         this.chunkResolve();
         this.chunkResolve = null;
       }
+    };
+
+    const switchToLiveToolFallback = (): void => {
+      if (toolSourceMode === 'fallback') {
+        return;
+      }
+
+      toolSourceMode = 'fallback';
+      if (tailDrainInterval) {
+        clearInterval(tailDrainInterval);
+        tailDrainInterval = null;
+      }
+
+      if (tailEngine) {
+        void tailEngine.stopPolling().catch(() => {});
+      }
+    };
+
+    const syncTailPollingState = (): Error | null => {
+      if (!tailEngine) return null;
+
+      const tailError = tailEngine.consumePollingError();
+      if (tailError) {
+        switchToLiveToolFallback();
+        return tailError;
+      }
+
+      return null;
+    };
+
+    const drainTailToolChunks = (): void => {
+      if (!tailEngine) return;
+      if (toolSourceMode !== 'transcript') return;
+      if (syncTailPollingState()) return;
+
+      const toolChunks = tailEngine.collectPendingEvents().filter(
+        (chunk): chunk is Extract<StreamChunk, { type: 'tool_use' | 'tool_result' }> =>
+          chunk.type === 'tool_use' || chunk.type === 'tool_result',
+      );
+
+      for (const chunk of toolChunks) {
+        enqueueChunk(chunk);
+      }
+    };
+
+    const stopTailToolPolling = async (): Promise<void> => {
+      if (tailDrainInterval) {
+        clearInterval(tailDrainInterval);
+        tailDrainInterval = null;
+      }
+      if (tailEngine) {
+        await tailEngine.stopPolling();
+      }
+    };
+
+    const flushTailToolsBeforeDone = (): void => {
+      if (toolSourceMode !== 'transcript' || !tailEngine) {
+        enqueueChunk({ type: 'done' });
+        return;
+      }
+      if (tailDonePromise) {
+        return;
+      }
+
+      tailDonePromise = (async () => {
+        try {
+          await tailEngine!.waitForSettle();
+          if (syncTailPollingState()) {
+            return;
+          }
+          drainTailToolChunks();
+        } finally {
+          await stopTailToolPolling();
+          enqueueChunk({ type: 'done' });
+        }
+      })();
+    };
+
+    // Set up notification router to push chunks
+    this.notificationRouter = new CodexNotificationRouter((chunk) => {
+      syncTailPollingState();
+
+      if (toolSourceMode === 'transcript') {
+        if (chunk.type === 'tool_use' || chunk.type === 'tool_result') {
+          return;
+        }
+        if (chunk.type === 'done') {
+          flushTailToolsBeforeDone();
+          return;
+        }
+      }
+
+      enqueueChunk(chunk);
     });
 
     this.wireTransportHandlers();
@@ -232,6 +330,17 @@ export class CodexChatRuntime implements ChatRuntime {
       if (threadPath) this.currentThreadPath = threadPath;
       this.currentQueryThreadId = threadId;
 
+      tailEngine = new CodexFileTailEngine(path.join(os.homedir(), '.codex', 'sessions'), 200_000);
+      tailEngine.resetForNewTurn();
+      transcriptSessionFilePath = threadPath ?? this.session.getSessionFilePath() ?? null;
+      const transcriptReady = await tailEngine.primeCursor(
+        threadId,
+        transcriptSessionFilePath ?? undefined,
+      );
+      if (transcriptReady) {
+        toolSourceMode = 'transcript';
+      }
+
       // Build input
       inputBundle = this.buildInput(turn.prompt, turn.request.images);
 
@@ -254,6 +363,20 @@ export class CodexChatRuntime implements ChatRuntime {
       });
       this.currentTurnId = turnResult.turn.id;
       this.flushPendingTurnNotifications();
+
+      if (toolSourceMode === 'transcript' && tailEngine) {
+        const transcriptPollingStarted = tailEngine.startPolling(
+          threadId,
+          transcriptSessionFilePath ?? undefined,
+        );
+        if (transcriptPollingStarted) {
+          tailDrainInterval = setInterval(() => {
+            drainTailToolChunks();
+          }, 50);
+        } else {
+          switchToLiveToolFallback();
+        }
+      }
 
       // Yield chunks until done or canceled
       while (true) {
@@ -296,6 +419,10 @@ export class CodexChatRuntime implements ChatRuntime {
       yield { type: 'done' };
       return;
     } finally {
+      if (!tailDonePromise) {
+        await stopTailToolPolling().catch(() => {});
+      }
+
       inputBundle?.cleanup();
       this.currentTurnId = null;
       this.currentQueryThreadId = null;

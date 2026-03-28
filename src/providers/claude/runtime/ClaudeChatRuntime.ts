@@ -30,23 +30,23 @@ import { Notice } from 'obsidian';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { McpServerManager } from '../../../core/mcp';
-import { ProviderSettingsCoordinator } from '../../../core/providers';
+import type { McpServerManager } from '../../../core/mcp/McpServerManager';
+import { ProviderSettingsCoordinator } from '../../../core/providers/ProviderSettingsCoordinator';
+import type { ChatRuntime } from '../../../core/runtime/ChatRuntime';
 import type {
   ApprovalCallback,
   AskUserQuestionCallback,
   ChatRewindResult,
-  ChatRuntime,
   ChatRuntimeConversationState,
   ChatRuntimeEnsureReadyOptions,
   ChatRuntimeQueryOptions,
   ChatTurnRequest,
   PreparedChatTurn,
   SessionUpdateResult,
-} from '../../../core/runtime';
+} from '../../../core/runtime/types';
 import {
   getActionDescription,
-} from '../../../core/security';
+} from '../../../core/security/ApprovalManager';
 import { TOOL_ASK_USER_QUESTION, TOOL_ENTER_PLAN_MODE, TOOL_EXIT_PLAN_MODE, TOOL_SKILL } from '../../../core/tools/toolNames';
 import type {
   ApprovalDecision,
@@ -72,22 +72,14 @@ import {
 } from '../../../utils/session';
 import { CLAUDE_PROVIDER_CAPABILITIES } from '../capabilities';
 import { loadSubagentFinalResult, loadSubagentToolCalls } from '../history/ClaudeHistoryStore';
-import {
-  createBlocklistHook,
-  createStopSubagentHook,
-  createVaultRestrictionHook,
-  type SubagentHookState,
-} from '../hooks';
-import { encodeClaudeTurn } from '../prompt';
-import { isSessionInitEvent, isStreamChunk } from '../sdk';
+import { createBlocklistHook, createVaultRestrictionHook } from '../hooks/SecurityHooks';
+import { createStopSubagentHook, type SubagentHookState } from '../hooks/SubagentHooks';
+import { encodeClaudeTurn } from '../prompt/ClaudeTurnEncoder';
+import { isSessionInitEvent, isStreamChunk } from '../sdk/typeGuards';
 import { buildPermissionUpdates } from '../security/ClaudePermissionUpdates';
 import { transformSDKMessage } from '../stream/transformClaudeMessage';
-import {
-  type ClaudeProviderState,
-  getClaudeState,
-  isAdaptiveThinkingModel,
-  THINKING_BUDGETS,
-} from '../types';
+import { isAdaptiveThinkingModel, THINKING_BUDGETS } from '../types/models';
+import { type ClaudeProviderState, getClaudeState } from '../types/providerState';
 import { MessageChannel } from './ClaudeMessageChannel';
 import {
   type ColdStartQueryContext,
@@ -110,7 +102,7 @@ export type {
   ApprovalCallback,
   ApprovalCallbackOptions,
   AskUserQuestionCallback,
-} from '../../../core/runtime';
+} from '../../../core/runtime/types';
 
 type QueryOptions = ChatRuntimeQueryOptions;
 

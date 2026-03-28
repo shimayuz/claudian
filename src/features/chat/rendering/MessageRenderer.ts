@@ -1,11 +1,18 @@
 import type { App, Component } from 'obsidian';
 import { MarkdownRenderer, Notice } from 'obsidian';
 
-import { DEFAULT_CHAT_PROVIDER_ID, type ProviderCapabilities } from '../../../core/providers';
-import { isSubagentToolName, isWriteEditTool, TOOL_AGENT_OUTPUT } from '../../../core/tools/toolNames';
+import { DEFAULT_CHAT_PROVIDER_ID, type ProviderCapabilities } from '../../../core/providers/types';
+import {
+  isCodexSubagentHiddenTool,
+  isCodexSubagentSpawnTool,
+  isSubagentToolName,
+  isWriteEditTool,
+  TOOL_AGENT_OUTPUT,
+} from '../../../core/tools/toolNames';
 import type { ChatMessage, ImageAttachment, SubagentInfo, ToolCallInfo } from '../../../core/types';
-import { t } from '../../../i18n';
+import { t } from '../../../i18n/i18n';
 import type ClaudianPlugin from '../../../main';
+import { buildCodexSubagentInfo } from '../../../providers/codex/normalization/codexSubagentNormalization';
 import { formatDurationMmSs } from '../../../utils/date';
 import { processFileLinks, registerFileLinkHandler } from '../../../utils/fileLink';
 import { replaceImageEmbedsWithHtml } from '../../../utils/imageEmbed';
@@ -245,7 +252,7 @@ export class MessageRenderer {
         } else if (block.type === 'tool_use') {
           const toolCall = msg.toolCalls?.find(tc => tc.id === block.toolId);
           if (toolCall) {
-            this.renderToolCall(contentEl, toolCall);
+            this.renderToolCall(contentEl, toolCall, msg);
             renderedToolIds.add(toolCall.id);
           }
         } else if (block.type === 'compact_boundary') {
@@ -266,7 +273,7 @@ export class MessageRenderer {
       if (msg.toolCalls && msg.toolCalls.length > 0) {
         for (const toolCall of msg.toolCalls) {
           if (renderedToolIds.has(toolCall.id)) continue;
-          this.renderToolCall(contentEl, toolCall);
+          this.renderToolCall(contentEl, toolCall, msg);
           renderedToolIds.add(toolCall.id);
         }
       }
@@ -279,7 +286,7 @@ export class MessageRenderer {
       }
       if (msg.toolCalls) {
         for (const toolCall of msg.toolCalls) {
-          this.renderToolCall(contentEl, toolCall);
+          this.renderToolCall(contentEl, toolCall, msg);
         }
       }
     }
@@ -297,18 +304,20 @@ export class MessageRenderer {
   }
 
   /**
-   * Renders a tool call with special handling for Write/Edit and Agent (subagent).
-   * TaskOutput is hidden as it's an internal tool for async subagent communication.
+   * Renders a tool call with special handling for Write/Edit, Agent (subagent),
+   * and Codex collab agent lifecycle tools.
    */
-  private renderToolCall(contentEl: HTMLElement, toolCall: ToolCallInfo): void {
-    // Skip TaskOutput - it's invisible (internal async subagent communication)
-    if (toolCall.name === TOOL_AGENT_OUTPUT) {
-      return;
-    }
+  private renderToolCall(contentEl: HTMLElement, toolCall: ToolCallInfo, msg?: ChatMessage): void {
+    // Skip invisible internal tools
+    if (toolCall.name === TOOL_AGENT_OUTPUT) return;
+    if (isCodexSubagentHiddenTool(toolCall.name)) return;
+
     if (isWriteEditTool(toolCall.name)) {
       renderStoredWriteEdit(contentEl, toolCall);
     } else if (isSubagentToolName(toolCall.name)) {
       this.renderTaskSubagent(contentEl, toolCall);
+    } else if (isCodexSubagentSpawnTool(toolCall.name) && msg) {
+      this.renderCodexSubagent(contentEl, toolCall, msg);
     } else {
       renderStoredToolCall(contentEl, toolCall);
     }
@@ -324,6 +333,15 @@ export class MessageRenderer {
       renderStoredAsyncSubagent(contentEl, subagentInfo);
       return;
     }
+    renderStoredSubagent(contentEl, subagentInfo);
+  }
+
+  /**
+   * Consolidates Codex collab agent lifecycle tools (spawn_agent + wait_agent + close_agent)
+   * into a single subagent block with prompt and result.
+   */
+  private renderCodexSubagent(contentEl: HTMLElement, spawnToolCall: ToolCallInfo, msg: ChatMessage): void {
+    const subagentInfo = buildCodexSubagentInfo(spawnToolCall, msg.toolCalls ?? []);
     renderStoredSubagent(contentEl, subagentInfo);
   }
 

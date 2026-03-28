@@ -1,17 +1,20 @@
 import { Notice, setIcon } from 'obsidian';
 
-import type { TitleGenerationService } from '../../../core/providers';
-import type { ChatRuntime } from '../../../core/runtime';
+import type { TitleGenerationService } from '../../../core/providers/types';
+import type { ChatRuntime } from '../../../core/runtime/ChatRuntime';
 import type { Conversation } from '../../../core/types';
-import { t } from '../../../i18n';
+import { t } from '../../../i18n/i18n';
 import type ClaudianPlugin from '../../../main';
 import { confirm } from '../../../shared/modals/ConfirmModal';
-import { cleanupThinkingBlock } from '../rendering';
 import type { MessageRenderer } from '../rendering/MessageRenderer';
+import { cleanupThinkingBlock } from '../rendering/ThinkingBlockRenderer';
 import { findRewindContext } from '../rewind';
 import type { SubagentManager } from '../services/SubagentManager';
 import type { ChatState } from '../state/ChatState';
-import type { ExternalContextSelector, FileContextManager, ImageContextManager, McpServerSelector, StatusPanel } from '../ui';
+import type { FileContextManager } from '../ui/FileContext';
+import type { ImageContextManager } from '../ui/ImageContext';
+import type { ExternalContextSelector, McpServerSelector } from '../ui/InputToolbar';
+import type { StatusPanel } from '../ui/StatusPanel';
 
 export interface ConversationCallbacks {
   onNewConversation?: () => void;
@@ -762,7 +765,6 @@ export class ConversationController {
     // AI title generation is Claude-only
     const fullConv = await plugin.getConversationById(conversationId);
     if (!fullConv || fullConv.messages.length < 1) return;
-    if (fullConv.providerId && fullConv.providerId !== 'claude') return;
 
     const titleService = this.deps.getTitleGenerationService();
     if (!titleService) return;

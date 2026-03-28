@@ -23,10 +23,10 @@ import type {
   ProviderCliResolver,
 } from '../../../core/providers/types';
 import type { SlashCommand } from '../../../core/types';
-import { AgentManager } from '../agents';
-import { PluginManager } from '../plugins';
+import { AgentManager } from '../agents/AgentManager';
+import { PluginManager } from '../plugins/PluginManager';
 import { ClaudeCliResolver } from '../runtime/ClaudeCliResolver';
-import { StorageService } from '../storage';
+import { StorageService } from '../storage/StorageService';
 
 /**
  * Full Claude storage surface.

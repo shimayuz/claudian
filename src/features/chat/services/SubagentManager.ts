@@ -2,7 +2,8 @@ import { existsSync, readFileSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
 import { isAbsolute, sep } from 'path';
 
-import { ProviderRegistry, type ProviderTaskResultInterpreter } from '../../../core/providers';
+import { ProviderRegistry } from '../../../core/providers/ProviderRegistry';
+import type { ProviderTaskResultInterpreter } from '../../../core/providers/types';
 import { TOOL_TASK } from '../../../core/tools/toolNames';
 import type {
   SubagentInfo,
@@ -21,7 +22,7 @@ import {
   type SubagentState,
   updateAsyncSubagentRunning,
   updateSubagentToolResult,
-} from '../rendering';
+} from '../rendering/SubagentRenderer';
 import type { PendingToolCall } from '../state/types';
 
 export type SubagentStateChangeCallback = (subagent: SubagentInfo) => void;

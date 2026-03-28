@@ -1,4 +1,4 @@
-import { ProviderRegistry } from '@/core/providers';
+import { ProviderRegistry } from '@/core/providers/ProviderRegistry';
 
 describe('ProviderRegistry', () => {
   it('creates a runtime with the default provider id', () => {

@@ -7,7 +7,7 @@ import {
 } from '@/shared/components/SlashCommandDropdown';
 
 // Mock getBuiltInCommandsForDropdown
-jest.mock('@/core/commands', () => ({
+jest.mock('@/core/commands/builtInCommands', () => ({
   getBuiltInCommandsForDropdown: jest.fn(() => [
     { id: 'builtin:clear', name: 'clear', description: 'Start a new conversation', content: '' },
     { id: 'builtin:add-dir', name: 'add-dir', description: 'Add external context directory', content: '', argumentHint: 'path/to/directory' },

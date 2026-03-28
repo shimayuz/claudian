@@ -13,7 +13,7 @@ import * as path from 'path';
 
 import type { PluginInfo, PluginScope } from '../../../core/types';
 import type { CCSettingsStorage } from '../storage/CCSettingsStorage';
-import type { InstalledPluginEntry, InstalledPluginsFile } from '../types';
+import type { InstalledPluginEntry, InstalledPluginsFile } from '../types/plugins';
 
 const INSTALLED_PLUGINS_PATH = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json');
 const GLOBAL_SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');

@@ -1,13 +1,14 @@
 import { Notice, setIcon } from 'obsidian';
 import * as path from 'path';
 
-import type { McpServerManager } from '../../../core/mcp';
+import type { McpServerManager } from '../../../core/mcp/McpServerManager';
 import type {
   ProviderCapabilities,
   ProviderChatUIConfig,
+  ProviderIconSvg,
   ProviderPermissionModeToggleConfig,
   ProviderReasoningOption,
-} from '../../../core/providers';
+} from '../../../core/providers/types';
 import type {
   ManagedMcpServer,
   UsageInfo,
@@ -40,8 +41,6 @@ export class ModelSelector {
   private buttonEl: HTMLElement | null = null;
   private dropdownEl: HTMLElement | null = null;
   private callbacks: ToolbarCallbacks;
-  private isReady = false;
-
   constructor(parentEl: HTMLElement, callbacks: ToolbarCallbacks) {
     this.callbacks = callbacks;
     this.container = parentEl.createDiv({ cls: 'claudian-model-selector' });
@@ -61,7 +60,6 @@ export class ModelSelector {
     this.container.empty();
 
     this.buttonEl = this.container.createDiv({ cls: 'claudian-model-btn' });
-    this.setReady(this.isReady);
     this.updateDisplay();
 
     this.dropdownEl = this.container.createDiv({ cls: 'claudian-model-dropdown' });
@@ -82,24 +80,31 @@ export class ModelSelector {
     labelEl.setText(displayModel?.label || 'Unknown');
   }
 
-  setReady(ready: boolean) {
-    this.isReady = ready;
-    this.buttonEl?.toggleClass('ready', ready);
-  }
-
   renderOptions() {
     if (!this.dropdownEl) return;
     this.dropdownEl.empty();
 
     const currentModel = this.callbacks.getSettings().model;
     const models = this.getAvailableModels();
+    const reversed = [...models].reverse();
 
-    for (const model of [...models].reverse()) {
+    let lastGroup: string | undefined;
+    for (const model of reversed) {
+      if (model.group && model.group !== lastGroup) {
+        const separator = this.dropdownEl.createDiv({ cls: 'claudian-model-group' });
+        separator.setText(model.group);
+        lastGroup = model.group;
+      }
+
       const option = this.dropdownEl.createDiv({ cls: 'claudian-model-option' });
       if (model.value === currentModel) {
         option.addClass('selected');
       }
 
+      const icon = model.providerIcon ?? this.callbacks.getUIConfig().getProviderIcon?.();
+      if (icon) {
+        option.appendChild(createProviderIconSvg(icon));
+      }
       option.createSpan({ text: model.label });
       if (model.description) {
         option.setAttribute('title', model.description);
@@ -113,6 +118,20 @@ export class ModelSelector {
       });
     }
   }
+}
+
+function createProviderIconSvg(icon: ProviderIconSvg): SVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', icon.viewBox);
+  svg.setAttribute('width', '12');
+  svg.setAttribute('height', '12');
+  svg.classList.add('claudian-model-provider-icon');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', icon.path);
+  path.setAttribute('fill', 'currentColor');
+  svg.appendChild(path);
+  return svg;
 }
 
 export class ThinkingBudgetSelector {

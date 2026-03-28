@@ -1,34 +1,32 @@
 import type { Component, WorkspaceLeaf } from 'obsidian';
 
-import type { InstructionRefineService, ProviderId, TitleGenerationService } from '../../../core/providers';
-import type { ChatRuntime } from '../../../core/runtime';
+import type { InstructionRefineService, ProviderId, TitleGenerationService } from '../../../core/providers/types';
+import type { ChatRuntime } from '../../../core/runtime/ChatRuntime';
 import type { SlashCommandDropdown } from '../../../shared/components/SlashCommandDropdown';
-import type {
-  BrowserSelectionController,
-  CanvasSelectionController,
-  ConversationController,
-  InputController,
-  NavigationController,
-  SelectionController,
-  StreamController,
-} from '../controllers';
-import type { MessageRenderer } from '../rendering';
+import type { BrowserSelectionController } from '../controllers/BrowserSelectionController';
+import type { CanvasSelectionController } from '../controllers/CanvasSelectionController';
+import type { ConversationController } from '../controllers/ConversationController';
+import type { InputController } from '../controllers/InputController';
+import type { NavigationController } from '../controllers/NavigationController';
+import type { SelectionController } from '../controllers/SelectionController';
+import type { StreamController } from '../controllers/StreamController';
+import type { MessageRenderer } from '../rendering/MessageRenderer';
 import type { SubagentManager } from '../services/SubagentManager';
-import type { ChatState } from '../state';
+import type { ChatState } from '../state/ChatState';
+import type { BangBashModeManager } from '../ui/BangBashModeManager';
+import type { FileContextManager } from '../ui/FileContext';
+import type { ImageContextManager } from '../ui/ImageContext';
 import type {
-  BangBashModeManager,
   ContextUsageMeter,
   ExternalContextSelector,
-  FileContextManager,
-  ImageContextManager,
-  InstructionModeManager,
   McpServerSelector,
   ModelSelector,
   PermissionToggle,
-  StatusPanel,
   ThinkingBudgetSelector,
-} from '../ui';
-import type { NavigationSidebar } from '../ui';
+} from '../ui/InputToolbar';
+import type { InstructionModeManager } from '../ui/InstructionModeManager';
+import type { NavigationSidebar } from '../ui/NavigationSidebar';
+import type { StatusPanel } from '../ui/StatusPanel';
 
 /**
  * Default number of tabs allowed.
@@ -266,6 +264,9 @@ export interface TabManagerCallbacks {
 
   /** Called when a tab's conversation changes (loaded different conversation in same tab). */
   onTabConversationChanged?: (tabId: TabId, conversationId: string | null) => void;
+
+  /** Called when the active provider changes within a tab (blank tab model selection). */
+  onTabProviderChanged?: (tabId: TabId, providerId: ProviderId) => void;
 }
 
 /**

@@ -1,9 +1,9 @@
 import type { App } from 'obsidian';
 import { Modal, Notice, setIcon, Setting } from 'obsidian';
 
-import { ProviderRegistry } from '../../../core/providers';
+import { ProviderRegistry } from '../../../core/providers/ProviderRegistry';
 import type { EnvSnippet } from '../../../core/types';
-import { t } from '../../../i18n';
+import { t } from '../../../i18n/i18n';
 import type ClaudianPlugin from '../../../main';
 import { formatContextLimit, parseContextLimit, parseEnvironmentVariables } from '../../../utils/env';
 import type { ClaudianView } from '../../chat/ClaudianView';

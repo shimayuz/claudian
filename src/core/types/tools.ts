@@ -20,12 +20,13 @@ export interface AskUserQuestionOption {
 /** Parsed question for AskUserQuestion tool. */
 export interface AskUserQuestionItem {
   question: string;
+  id?: string;
   header: string;
   options: AskUserQuestionOption[];
   multiSelect: boolean;
 }
 
-/** User-provided answers keyed by question text. */
+/** User-provided answers keyed by question text or stable question id. */
 export type AskUserAnswers = Record<string, string>;
 
 /** Tool call tracking with status and result. */

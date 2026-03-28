@@ -13,7 +13,7 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 
-import { extractResolvedAnswers, extractResolvedAnswersFromResultText } from '../../../core/tools';
+import { extractResolvedAnswers, extractResolvedAnswersFromResultText } from '../../../core/tools/toolInput';
 import { isSubagentToolName, TOOL_ASK_USER_QUESTION } from '../../../core/tools/toolNames';
 import type {
   AsyncSubagentStatus,

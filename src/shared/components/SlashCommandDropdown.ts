@@ -5,7 +5,7 @@
  * Follows the FileContext.ts pattern for input detection and keyboard navigation.
  */
 
-import { getBuiltInCommandsForDropdown } from '../../core/commands';
+import { getBuiltInCommandsForDropdown } from '../../core/commands/builtInCommands';
 import type { SlashCommand } from '../../core/types';
 import { normalizeArgumentHint } from '../../utils/slashCommand';
 
