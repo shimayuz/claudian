@@ -211,7 +211,7 @@ export interface ClaudianSettings {
   claudeCliPathsByHost: HostnameCliPaths;
   codexCliPath?: string;
   codexCliPathsByHost?: HostnameCliPaths;
-  codexReasoningSummary?: string;  // 'concise' | 'detailed' | 'none'
+  codexReasoningSummary?: string;  // 'auto' | 'concise' | 'detailed' | 'none'
   loadUserClaudeSettings: boolean;
 
   // Provider selection

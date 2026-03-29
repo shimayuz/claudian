@@ -12,13 +12,15 @@ import { getCurrentPlatformKey } from '../../core/types';
 import { getAvailableLocales, getLocaleDisplayName, setLocale, t } from '../../i18n/i18n';
 import type { Locale, TranslationKey } from '../../i18n/types';
 import type ClaudianPlugin from '../../main';
+import { getClaudeWorkspaceServices } from '../../providers/claude/app/ClaudeWorkspaceServices';
+import { getCodexWorkspaceServices } from '../../providers/codex/app/CodexWorkspaceServices';
 import { findNodeExecutable, formatContextLimit, getEnhancedPath, parseContextLimit, parseEnvironmentVariables } from '../../utils/env';
 import { getHostnameKey } from '../../utils/env';
 import { expandHomePath } from '../../utils/path';
-import { ClaudianView } from '../chat/ClaudianView';
 import { buildNavMappingText, parseNavMappings } from './keyboardNavigation';
 import { AgentSettings } from './ui/AgentSettings';
 import { CodexSkillSettings } from './ui/CodexSkillSettings';
+import { CodexSubagentSettings } from './ui/CodexSubagentSettings';
 import { EnvSnippetManager } from './ui/EnvSnippetManager';
 import { McpSettingsManager } from './ui/McpSettingsManager';
 import { PluginSettingsManager } from './ui/PluginSettingsManager';
@@ -363,10 +365,8 @@ export class ClaudianSettingTab extends PluginSettingTab {
             this.plugin.settings.tabBarPosition = value;
             await this.plugin.saveSettings();
 
-            for (const leaf of this.plugin.app.workspace.getLeavesOfType('claudian-view')) {
-              if (leaf.view instanceof ClaudianView) {
-                leaf.view.updateLayoutForPosition();
-              }
+            for (const view of this.plugin.getAllViews()) {
+              view.updateLayoutForPosition();
             }
           });
       });
@@ -526,6 +526,8 @@ export class ClaudianSettingTab extends PluginSettingTab {
   // ── Claude tab ──
 
   private renderClaudeTab(container: HTMLElement): void {
+    const claudeWorkspace = getClaudeWorkspaceServices();
+
     new Setting(container).setName(t('settings.slashCommands.name')).setHeading();
 
     const slashCommandsDesc = container.createDiv({ cls: 'claudian-sp-settings-desc' });
@@ -537,7 +539,11 @@ export class ClaudianSettingTab extends PluginSettingTab {
     });
 
     const slashCommandsContainer = container.createDiv({ cls: 'claudian-slash-commands-container' });
-    new SlashCommandSettings(slashCommandsContainer, this.plugin);
+    new SlashCommandSettings(
+      slashCommandsContainer,
+      this.plugin.app,
+      claudeWorkspace.commandCatalog,
+    );
 
     this.renderHiddenProviderCommandSetting(container, 'claude', {
       name: t('settings.hiddenSlashCommands.name'),
@@ -554,7 +560,11 @@ export class ClaudianSettingTab extends PluginSettingTab {
     });
 
     const agentsContainer = container.createDiv({ cls: 'claudian-agents-container' });
-    new AgentSettings(agentsContainer, this.plugin);
+    new AgentSettings(agentsContainer, {
+      app: this.plugin.app,
+      agentManager: claudeWorkspace.agentManager,
+      agentStorage: claudeWorkspace.agentStorage,
+    });
 
     new Setting(container).setName(t('settings.mcpServers.name')).setHeading();
 
@@ -565,7 +575,17 @@ export class ClaudianSettingTab extends PluginSettingTab {
     });
 
     const mcpContainer = container.createDiv({ cls: 'claudian-mcp-container' });
-    new McpSettingsManager(mcpContainer, this.plugin);
+    new McpSettingsManager(mcpContainer, {
+      app: this.plugin.app,
+      mcpStorage: claudeWorkspace.mcpStorage,
+      broadcastMcpReload: async () => {
+        for (const view of this.plugin.getAllViews()) {
+          await view.getTabManager()?.broadcastToAllTabs(
+            (service) => service.reloadMcpServers(),
+          );
+        }
+      },
+    });
 
     new Setting(container).setName(t('settings.plugins.name')).setHeading();
 
@@ -576,7 +596,21 @@ export class ClaudianSettingTab extends PluginSettingTab {
     });
 
     const pluginsContainer = container.createDiv({ cls: 'claudian-plugins-container' });
-    new PluginSettingsManager(pluginsContainer, this.plugin);
+    new PluginSettingsManager(pluginsContainer, {
+      pluginManager: claudeWorkspace.pluginManager,
+      agentManager: claudeWorkspace.agentManager,
+      restartTabs: async () => {
+        const view = this.plugin.getView();
+        const tabManager = view?.getTabManager();
+        if (!tabManager) {
+          return;
+        }
+
+        await tabManager.broadcastToAllTabs(
+          async (service) => { await service.ensureReady({ force: true }); },
+        );
+      },
+    });
 
     new Setting(container).setName(t('settings.environment')).setHeading();
 
@@ -757,7 +791,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
           }
           this.plugin.settings.claudeCliPathsByHost[hostnameKey] = trimmed;
           await this.plugin.saveSettings();
-          this.plugin.cliResolver?.reset();
+          claudeWorkspace.cliResolver.reset();
           const view = this.plugin.getView();
           await view?.getTabManager()?.broadcastToAllTabs(
             (service) => Promise.resolve(service.cleanup())
@@ -778,6 +812,8 @@ export class ClaudianSettingTab extends PluginSettingTab {
   // ── Codex tab ──
 
   private renderCodexTab(container: HTMLElement): void {
+    const codexWorkspace = getCodexWorkspaceServices();
+
     const hostnameKey = getHostnameKey();
     const platformHint = process.platform === 'win32'
       ? 'Use the local `codex.exe` path from your Codex CLI installation.'
@@ -860,6 +896,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
 
     // Reasoning summary
     const SUMMARY_OPTIONS: { value: string; label: string }[] = [
+      { value: 'auto', label: 'Auto' },
       { value: 'concise', label: 'Concise' },
       { value: 'detailed', label: 'Detailed' },
       { value: 'none', label: 'Off' },
@@ -872,7 +909,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
         for (const opt of SUMMARY_OPTIONS) {
           dropdown.addOption(opt.value, opt.label);
         }
-        dropdown.setValue(this.plugin.settings.codexReasoningSummary ?? 'concise');
+        dropdown.setValue(this.plugin.settings.codexReasoningSummary ?? 'detailed');
         dropdown.onChange(async (value) => {
           this.plugin.settings.codexReasoningSummary = value;
           await this.plugin.saveSettings();
@@ -880,7 +917,7 @@ export class ClaudianSettingTab extends PluginSettingTab {
       });
 
     // Codex Skills (vault-only)
-    const codexCatalog = ProviderRegistry.getCommandCatalog('codex');
+    const codexCatalog = codexWorkspace.commandCatalog;
     if (codexCatalog) {
       new Setting(container).setName('Codex Skills').setHeading();
 
@@ -898,6 +935,20 @@ export class ClaudianSettingTab extends PluginSettingTab {
       name: 'Hidden Skills',
       desc: 'Hide specific Codex skills from the dropdown. Enter skill names without the leading $, one per line.',
       placeholder: 'analyze\nexplain\nfix',
+    });
+
+    // Codex Subagents (vault-only)
+    new Setting(container).setName('Codex Subagents').setHeading();
+
+    const subagentDesc = container.createDiv({ cls: 'claudian-sp-settings-desc' });
+    subagentDesc.createEl('p', {
+      cls: 'setting-item-description',
+      text: 'Manage vault-level Codex subagents stored in .codex/agents/. Each TOML file defines one custom agent.',
+    });
+
+    const subagentContainer = container.createDiv({ cls: 'claudian-slash-commands-container' });
+    new CodexSubagentSettings(subagentContainer, codexWorkspace.subagentStorage, this.plugin.app, () => {
+      void codexWorkspace.refreshAgentMentions?.();
     });
 
     // MCP Servers (informational)
