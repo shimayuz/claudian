@@ -384,7 +384,7 @@ describe('CodexNotificationRouter', () => {
   });
 
   describe('token usage', () => {
-    it('maps thread/tokenUsage/updated to usage chunk', () => {
+    it('maps thread/tokenUsage/updated to usage chunk using last call usage', () => {
       router.handleNotification('thread/tokenUsage/updated', {
         threadId: 't1',
         turnId: 'turn1',
@@ -411,13 +411,13 @@ describe('CodexNotificationRouter', () => {
       expect(chunks[0]).toMatchObject({
         type: 'usage',
         usage: {
-          inputTokens: 18000,
+          inputTokens: 9000,
           cacheReadInputTokens: 5000,
           cacheCreationInputTokens: 0,
           contextWindow: 200000,
           contextWindowIsAuthoritative: true,
-          contextTokens: 23000,
-          percentage: 12,
+          contextTokens: 9000,
+          percentage: 5,
         },
       });
     });
