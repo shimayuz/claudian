@@ -44,7 +44,7 @@ export class CodexAuxQueryRunner {
         model,
         cwd: getVaultPath(this.plugin.app) ?? process.cwd(),
         approvalPolicy: 'never',
-        sandbox: 'danger-full-access',
+        sandbox: 'read-only',
         baseInstructions: config.systemPrompt,
         experimentalRawEvents: false,
         persistExtendedHistory: false,
