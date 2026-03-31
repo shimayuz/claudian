@@ -3,7 +3,6 @@ import {
   getInlineEditSystemPrompt,
   parseInlineEditResponse,
 } from '../../../core/prompt/inlineEdit';
-import { ProviderSettingsCoordinator } from '../../../core/providers/ProviderSettingsCoordinator';
 import type {
   InlineEditRequest,
   InlineEditResult,
@@ -54,16 +53,11 @@ export class CodexInlineEditService implements InlineEditService {
   }
 
   private async sendMessage(prompt: string): Promise<InlineEditResult> {
-    const settings = ProviderSettingsCoordinator.getProviderSettingsSnapshot(
-      this.plugin.settings as unknown as Record<string, unknown>,
-      'codex',
-    );
-
     this.abortController = new AbortController();
 
     try {
       const text = await this.runner.query({
-        systemPrompt: getInlineEditSystemPrompt(settings.allowExternalAccess as boolean),
+        systemPrompt: getInlineEditSystemPrompt(),
         abortController: this.abortController,
       }, prompt);
 

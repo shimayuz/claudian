@@ -24,6 +24,7 @@ import type {
   SubagentRuntimeState,
 } from '../../../core/runtime/types';
 import type { ChatMessage, Conversation, SlashCommand, StreamChunk } from '../../../core/types';
+import type { CodexSafeMode } from '../../../core/types/settings';
 import type ClaudianPlugin from '../../../main';
 import { getEnhancedPath, parseEnvironmentVariables } from '../../../utils/env';
 import { getVaultPath } from '../../../utils/path';
@@ -47,11 +48,19 @@ import { CodexServerRequestRouter } from './CodexServerRequestRouter';
 import { CodexFileTailEngine } from './CodexSessionFileTail';
 import { CodexSessionManager } from './CodexSessionManager';
 
-const SANDBOX_MAP: Record<string, { approvalPolicy: string; sandbox: string }> = {
-  yolo: { approvalPolicy: 'never', sandbox: 'danger-full-access' },
-  normal: { approvalPolicy: 'on-request', sandbox: 'workspace-write' },
-  plan: { approvalPolicy: 'on-request', sandbox: 'workspace-write' },
-};
+function resolveCodexSandboxConfig(
+  permissionMode: string,
+  codexSafeMode: CodexSafeMode = 'workspace-write',
+): { approvalPolicy: string; sandbox: string } {
+  if (permissionMode === 'yolo') {
+    return { approvalPolicy: 'never', sandbox: 'danger-full-access' };
+  }
+  if (permissionMode === 'plan') {
+    return { approvalPolicy: 'on-request', sandbox: 'workspace-write' };
+  }
+  // normal — resolve through the user's configured safe mode
+  return { approvalPolicy: 'on-request', sandbox: codexSafeMode };
+}
 
 const EFFORT_MAP: Record<string, string> = {
   low: 'low',
@@ -302,7 +311,7 @@ export class CodexChatRuntime implements ChatRuntime {
       if (existingThreadId && existingThreadId !== this.loadedThreadId) {
         // Resume a persisted thread not yet loaded in this daemon
         const providerSettings = this.getProviderSettings();
-        const permissionMode = SANDBOX_MAP[providerSettings.permissionMode as string] ?? SANDBOX_MAP.normal;
+        const permissionMode = resolveCodexSandboxConfig(providerSettings.permissionMode as string, this.plugin.settings.codexSafeMode);
         const resumeResult = await this.transport!.request<ThreadResumeResult>('thread/resume', {
           threadId: existingThreadId,
           model: model ?? 'gpt-5.4',
@@ -320,7 +329,7 @@ export class CodexChatRuntime implements ChatRuntime {
       } else {
         // New thread
         const providerSettings = this.getProviderSettings();
-        const permissionMode = SANDBOX_MAP[providerSettings.permissionMode as string] ?? SANDBOX_MAP.normal;
+        const permissionMode = resolveCodexSandboxConfig(providerSettings.permissionMode as string, this.plugin.settings.codexSafeMode);
 
         const startResult = await this.transport!.request<ThreadStartResult>('thread/start', {
           model: model ?? 'gpt-5.4',
@@ -361,7 +370,7 @@ export class CodexChatRuntime implements ChatRuntime {
       const resolvedModel = model ?? 'gpt-5.4';
       const isPlanMode = providerSettings.permissionMode === 'plan';
       const externalContextPaths = this.resolveExternalContextPaths(turn, queryOptions);
-      const permissionMode = SANDBOX_MAP[providerSettings.permissionMode as string] ?? SANDBOX_MAP.normal;
+      const permissionMode = resolveCodexSandboxConfig(providerSettings.permissionMode as string, this.plugin.settings.codexSafeMode);
       const sandboxPolicy = this.buildTurnSandboxPolicy(externalContextPaths, permissionMode.sandbox);
 
       const collaborationMode = isPlanMode
@@ -628,8 +637,6 @@ export class CodexChatRuntime implements ChatRuntime {
     return {
       mediaFolder: settings.mediaFolder,
       customPrompt: settings.systemPrompt,
-      allowedExportPaths: settings.allowedExportPaths,
-      allowExternalAccess: settings.allowExternalAccess,
       vaultPath: getVaultPath(this.plugin.app) ?? undefined,
       userName: settings.userName,
     };
@@ -761,6 +768,14 @@ export class CodexChatRuntime implements ChatRuntime {
   ): SandboxPolicy | undefined {
     if (sandboxMode === 'danger-full-access') {
       return { type: 'dangerFullAccess' };
+    }
+
+    if (sandboxMode === 'read-only') {
+      return {
+        type: 'readOnly',
+        access: { type: 'fullAccess' },
+        networkAccess: false,
+      };
     }
 
     if (sandboxMode !== 'workspace-write') {

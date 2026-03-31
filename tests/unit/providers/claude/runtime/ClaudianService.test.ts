@@ -51,10 +51,8 @@ describe('ClaudianService', () => {
         thinkingBudget: 0,
         blockedCommands: [],
         enableBlocklist: false,
-        allowExternalAccess: false,
         mediaFolder: 'claudian-media',
         systemPrompt: '',
-        allowedExportPaths: [],
         loadUserClaudeSettings: false,
         claudeCliPath: '/usr/local/bin/claude',
         claudeCliPaths: [],
@@ -1401,6 +1399,44 @@ describe('ClaudianService', () => {
       expect(mockPersistentQuery.setPermissionMode).toHaveBeenCalledWith('bypassPermissions');
     });
 
+    it('should update permission mode when claudeSafeMode changes within normal mode', async () => {
+      (mockPlugin as any).settings.permissionMode = 'normal';
+      (mockPlugin as any).settings.claudeSafeMode = 'acceptEdits';
+      (service as any).currentConfig = (service as any).buildPersistentQueryConfig(
+        '/mock/vault/path',
+        '/usr/local/bin/claude',
+        [],
+      );
+
+      mockPersistentQuery.setPermissionMode.mockClear();
+      (mockPlugin as any).settings.claudeSafeMode = 'default';
+
+      await (service as any).applyDynamicUpdates({});
+
+      expect(mockPersistentQuery.setPermissionMode).toHaveBeenCalledWith('default');
+      expect((service as any).currentConfig.permissionMode).toBe('normal');
+      expect((service as any).currentConfig.sdkPermissionMode).toBe('default');
+    });
+
+    it('should update permission mode when claudeSafeMode switches back to acceptEdits', async () => {
+      (mockPlugin as any).settings.permissionMode = 'normal';
+      (mockPlugin as any).settings.claudeSafeMode = 'default';
+      (service as any).currentConfig = (service as any).buildPersistentQueryConfig(
+        '/mock/vault/path',
+        '/usr/local/bin/claude',
+        [],
+      );
+
+      mockPersistentQuery.setPermissionMode.mockClear();
+      (mockPlugin as any).settings.claudeSafeMode = 'acceptEdits';
+
+      await (service as any).applyDynamicUpdates({});
+
+      expect(mockPersistentQuery.setPermissionMode).toHaveBeenCalledWith('acceptEdits');
+      expect((service as any).currentConfig.permissionMode).toBe('normal');
+      expect((service as any).currentConfig.sdkPermissionMode).toBe('acceptEdits');
+    });
+
     it('should update MCP servers when changed', async () => {
       mockMcpManager.getActiveServers.mockReturnValue({
         'test-server': { command: 'test', args: [] },
@@ -1964,7 +2000,6 @@ describe('ClaudianService', () => {
         mcpServersKey: '{}',
         pluginsKey: '',
         externalContextPaths: [],
-        allowedExportPaths: [],
         settingSources: '',
         claudeCliPath: '/usr/local/bin/claude',
         enableChrome: false,
@@ -2141,7 +2176,6 @@ describe('ClaudianService', () => {
         mcpServersKey: '{}',
         pluginsKey: '',
         externalContextPaths: [],
-        allowedExportPaths: [],
         settingSources: '',
         claudeCliPath: '/usr/local/bin/claude',
         enableChrome: false,
@@ -2206,7 +2240,6 @@ describe('ClaudianService', () => {
         mcpServersKey: '{}',
         pluginsKey: '',
         externalContextPaths: [],
-        allowedExportPaths: [],
         settingSources: '',
         claudeCliPath: '/usr/local/bin/claude',
         enableChrome: false,
@@ -2250,7 +2283,6 @@ describe('ClaudianService', () => {
         mcpServersKey: '{}',
         pluginsKey: '',
         externalContextPaths: [],
-        allowedExportPaths: [],
         settingSources: '',
         claudeCliPath: '/usr/local/bin/claude',
         enableChrome: false,
@@ -2302,7 +2334,6 @@ describe('ClaudianService', () => {
         mcpServersKey: '{}',
         pluginsKey: '',
         externalContextPaths: [],
-        allowedExportPaths: [],
         settingSources: '',
         claudeCliPath: '/usr/local/bin/claude',
         enableChrome: false,
@@ -2342,7 +2373,6 @@ describe('ClaudianService', () => {
         mcpServersKey: '{}',
         pluginsKey: '',
         externalContextPaths: [],
-        allowedExportPaths: [],
         settingSources: '',
         claudeCliPath: '/usr/local/bin/claude',
         enableChrome: false,
@@ -2398,7 +2428,6 @@ describe('ClaudianService', () => {
         mcpServersKey: '{}',
         pluginsKey: '',
         externalContextPaths: [],
-        allowedExportPaths: [],
         settingSources: '',
         claudeCliPath: '/usr/local/bin/claude',
         enableChrome: false,
@@ -2465,7 +2494,6 @@ describe('ClaudianService', () => {
         mcpServersKey: '{}',
         pluginsKey: '',
         externalContextPaths: [],
-        allowedExportPaths: [],
         settingSources: '',
         claudeCliPath: '/usr/local/bin/claude',
         enableChrome: false,
@@ -2957,35 +2985,6 @@ describe('ClaudianService', () => {
 
       // The orphaned consumer should NOT call onError
       expect(onError).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('buildHooks - null vaultPath', () => {
-    it('should allow file access when vaultPath is null', async () => {
-      (service as any).vaultPath = null;
-
-      const hooks = (service as any).buildHooks();
-      const vaultRestrictionHook = hooks.PreToolUse[1];
-
-      // When vaultPath is null, getPathAccessType returns 'vault' for all paths,
-      // so the hook should allow access
-      const result = await vaultRestrictionHook.hooks[0]({
-        tool_name: 'Read',
-        tool_input: { file_path: '/some/external/path' },
-      });
-
-      expect(result.continue).toBe(true);
-    });
-  });
-
-  describe('buildHooks - external access', () => {
-    it('should omit vault restriction hook when external access is enabled', () => {
-      (mockPlugin.settings as any).allowExternalAccess = true;
-
-      const hooks = (service as any).buildHooks();
-
-      expect(hooks.PreToolUse).toHaveLength(1);
-      expect(hooks.PreToolUse[0].matcher).toBe('Bash');
     });
   });
 

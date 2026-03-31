@@ -13,18 +13,12 @@ import type {
   InlineEditResult,
   InlineEditSelectionRequest,
 } from '../../../core/providers/types';
-import { getPathFromToolInput } from '../../../core/tools/toolInput';
 import {
   isReadOnlyTool,
   READ_ONLY_TOOLS,
-  TOOL_GLOB,
-  TOOL_GREP,
-  TOOL_LS,
-  TOOL_READ,
 } from '../../../core/tools/toolNames';
 import type ClaudianPlugin from '../../../main';
 import { appendContextFiles } from '../../../utils/context';
-import { getPathAccessType, getVaultPath, type PathAccessType } from '../../../utils/path';
 import { runColdStartQuery } from '../runtime/claudeColdStartQuery';
 
 export type {
@@ -55,65 +49,6 @@ export function createReadOnlyHook(): HookCallbackMatcher {
             hookEventName: 'PreToolUse' as const,
             permissionDecision: 'deny' as const,
             permissionDecisionReason: `Inline edit mode: tool "${toolName}" is not allowed (read-only)`,
-          },
-        };
-      },
-    ],
-  };
-}
-
-export function createVaultRestrictionHook(vaultPath: string): HookCallbackMatcher {
-  const fileTools = [TOOL_READ, TOOL_GLOB, TOOL_GREP, TOOL_LS] as const;
-
-  return {
-    hooks: [
-      async (hookInput) => {
-        const input = hookInput as {
-          tool_name: string;
-          tool_input: Record<string, unknown>;
-        };
-
-        const toolName = input.tool_name;
-        if (!fileTools.includes(toolName as (typeof fileTools)[number])) {
-          return { continue: true };
-        }
-
-        const filePath = getPathFromToolInput(toolName, input.tool_input);
-        if (!filePath) {
-          return {
-            continue: false,
-            hookSpecificOutput: {
-              hookEventName: 'PreToolUse' as const,
-              permissionDecision: 'deny' as const,
-              permissionDecisionReason: `Access denied: Could not determine path for "${toolName}" tool.`,
-            },
-          };
-        }
-
-        let accessType: PathAccessType;
-        try {
-          accessType = getPathAccessType(filePath, undefined, undefined, vaultPath);
-        } catch {
-          return {
-            continue: false,
-            hookSpecificOutput: {
-              hookEventName: 'PreToolUse' as const,
-              permissionDecision: 'deny' as const,
-              permissionDecisionReason: `Access denied: Failed to validate path "${filePath}".`,
-            },
-          };
-        }
-
-        if (accessType === 'vault' || accessType === 'context' || accessType === 'readwrite') {
-          return { continue: true };
-        }
-
-        return {
-          continue: false,
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse' as const,
-            permissionDecision: 'deny' as const,
-            permissionDecisionReason: `Access denied: Path "${filePath}" is outside allowed paths. Inline edit is restricted to vault and ~/.claude/ directories.`,
           },
         };
       },
@@ -160,20 +95,17 @@ export class InlineEditService {
 
   private async sendMessage(prompt: string): Promise<InlineEditResult> {
     const settings = this.getScopedSettings();
-    const vaultPath = getVaultPath(this.plugin.app);
 
     this.abortController = new AbortController();
 
     const hooks = {
-      PreToolUse: settings.allowExternalAccess
-        ? [createReadOnlyHook()]
-        : [createReadOnlyHook(), ...(vaultPath ? [createVaultRestrictionHook(vaultPath)] : [])],
+      PreToolUse: [createReadOnlyHook()],
     };
 
     try {
       const result = await runColdStartQuery({
         plugin: this.plugin,
-        systemPrompt: getInlineEditSystemPrompt(settings.allowExternalAccess as boolean),
+        systemPrompt: getInlineEditSystemPrompt(),
         tools: [...READ_ONLY_TOOLS],
         hooks,
         resumeSessionId: this.sessionId ?? undefined,

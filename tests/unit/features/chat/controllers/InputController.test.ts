@@ -956,10 +956,10 @@ describe('InputController - Message Queue', () => {
       mockNotice.mockClear();
     });
 
-    it('should reject /add-dir on codex tabs', async () => {
+    it('should work on codex tabs', async () => {
       const mockExternalContextSelector = {
         getExternalContexts: jest.fn().mockReturnValue([]),
-        addExternalContext: jest.fn(),
+        addExternalContext: jest.fn().mockReturnValue({ success: true, normalizedPath: '/some/path' }),
       };
       deps.getExternalContextSelector = () => mockExternalContextSelector;
       deps.getAgentService = () => ({
@@ -981,8 +981,8 @@ describe('InputController - Message Queue', () => {
 
       await controller.sendMessage();
 
-      expect(mockExternalContextSelector.addExternalContext).not.toHaveBeenCalled();
-      expect(mockNotice).toHaveBeenCalledWith('/add-dir is not supported by this provider.');
+      expect(mockExternalContextSelector.addExternalContext).toHaveBeenCalledWith('/some/path');
+      expect(mockNotice).toHaveBeenCalledWith('Added external context: /some/path');
     });
 
     it('should show error notice when external context selector is not available', async () => {

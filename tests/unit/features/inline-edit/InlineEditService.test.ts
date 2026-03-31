@@ -5,7 +5,6 @@ import {
   setMockMessages,
 } from '@test/__mocks__/claude-agent-sdk';
 import * as fs from 'fs';
-import * as os from 'os';
 
 // Mock fs module
 jest.mock('fs');
@@ -16,7 +15,6 @@ import { getPathFromToolInput } from '@/core/tools/toolInput';
 import type { InlineEditRequest } from '@/providers/claude/aux/ClaudeInlineEditService';
 import {
   createReadOnlyHook,
-  createVaultRestrictionHook,
   InlineEditService,
 } from '@/providers/claude/aux/ClaudeInlineEditService';
 import { buildCursorContext } from '@/utils/editor';
@@ -27,7 +25,6 @@ function createMockPlugin(settings = {}) {
     settings: {
       model: 'sonnet',
       thinkingBudget: 'off',
-      allowExternalAccess: false,
       ...settings,
     },
     app: {
@@ -59,129 +56,6 @@ describe('InlineEditService', () => {
     service = new InlineEditService(mockPlugin);
   });
 
-
-  describe('vault restriction hook', () => {
-    beforeEach(() => {
-      const normalizePath = (p: string) => {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const pathModule = require('path');
-        return pathModule.resolve(p);
-      };
-      (fs.realpathSync as any) = jest.fn(normalizePath);
-      if (fs.realpathSync) {
-        (fs.realpathSync as any).native = jest.fn(normalizePath);
-      }
-    });
-
-    afterEach(() => {
-      jest.restoreAllMocks();
-    });
-
-    it('should block Read outside vault', async () => {
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0],
-        { tool_name: 'Read', tool_input: { file_path: '/etc/passwd' } },
-        'tool-1', {},
-      );
-
-      expect(res.continue).toBe(false);
-      expect(res.hookSpecificOutput.permissionDecisionReason).toContain('outside allowed paths');
-    });
-
-    it('should allow Read inside vault', async () => {
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0],
-        { tool_name: 'Read', tool_input: { file_path: '/test/vault/path/notes/a.md' } },
-        'tool-2', {},
-      );
-
-      expect(res.continue).toBe(true);
-    });
-
-    it('should block Glob escaping pattern', async () => {
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0],
-        { tool_name: 'Glob', tool_input: { pattern: '../**/*.md' } },
-        'tool-3', {},
-      );
-
-      expect(res.continue).toBe(false);
-    });
-
-    it('should allow Read inside ~/.claude/ directory', async () => {
-      // Mock os.homedir to return a known path
-      jest.spyOn(os, 'homedir').mockReturnValue('/home/test');
-
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0],
-        { tool_name: 'Read', tool_input: { file_path: '/home/test/.claude/settings.json' } },
-        'tool-4', {},
-      );
-
-      expect(res.continue).toBe(true);
-    });
-
-    it('should allow Glob inside ~/.claude/ directory', async () => {
-      jest.spyOn(os, 'homedir').mockReturnValue('/home/test');
-
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0],
-        { tool_name: 'Glob', tool_input: { pattern: '/home/test/.claude/**/*.md' } },
-        'tool-5', {},
-      );
-
-      expect(res.continue).toBe(true);
-    });
-
-    it('should still block paths outside vault and ~/.claude/', async () => {
-      jest.spyOn(os, 'homedir').mockReturnValue('/home/test');
-
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0],
-        { tool_name: 'Read', tool_input: { file_path: '/home/test/.ssh/id_rsa' } },
-        'tool-6', {},
-      );
-
-      expect(res.continue).toBe(false);
-      expect(res.hookSpecificOutput.permissionDecisionReason).toContain('outside allowed paths');
-    });
-
-    it('should block path traversal via ~/.claude/../ to escape allowed directory', async () => {
-      jest.spyOn(os, 'homedir').mockReturnValue('/home/test');
-
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0],
-        { tool_name: 'Read', tool_input: { file_path: '/home/test/.claude/../.ssh/id_rsa' } },
-        'tool-7', {},
-      );
-
-      expect(res.continue).toBe(false);
-      expect(res.hookSpecificOutput.permissionDecisionReason).toContain('outside allowed paths');
-    });
-
-    it('should deny when path cannot be determined (fail-closed)', async () => {
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0],
-        { tool_name: 'Read', tool_input: {} },
-        'tool-8', {},
-      );
-
-      expect(res.continue).toBe(false);
-      expect(res.hookSpecificOutput.permissionDecision).toBe('deny');
-      expect(res.hookSpecificOutput.permissionDecisionReason).toContain('Could not determine path');
-    });
-
-    it('should deny when path validation throws (fail-closed)', async () => {
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0],
-        { tool_name: 'Read', tool_input: { file_path: '/outside/vault/file.txt' } },
-        'tool-9', {},
-      );
-
-      expect(res.continue).toBe(false);
-      expect(res.hookSpecificOutput.permissionDecision).toBe('deny');
-    });
-  });
 
   describe('buildPrompt', () => {
     it('should build prompt with correct format', () => {
@@ -463,38 +337,6 @@ describe('InlineEditService', () => {
 
       const options = getLastOptions();
       expect(options?.permissionMode).toBe('bypassPermissions');
-    });
-
-    it('should omit vault restriction hook when external access is enabled', async () => {
-      mockPlugin.settings.allowExternalAccess = true;
-      service = new InlineEditService(mockPlugin);
-
-      setMockMessages([
-        { type: 'system', subtype: 'init', session_id: 'test-session' },
-        {
-          type: 'assistant',
-          message: { content: [{ type: 'text', text: '<replacement>fixed</replacement>' }] },
-        },
-        { type: 'result' },
-      ]);
-
-      await service.editText({
-        mode: 'selection',
-        selectedText: 'test',
-        instruction: 'fix',
-        notePath: 'test.md',
-      });
-
-      const options = getLastOptions();
-      expect(options?.hooks?.PreToolUse).toHaveLength(1);
-
-      const hookResult = await callHook(
-        options?.hooks?.PreToolUse?.[0].hooks[0],
-        { tool_name: 'Read', tool_input: { file_path: '/etc/passwd' } },
-        'tool-allow-external',
-        {},
-      );
-      expect(hookResult.continue).toBe(true);
     });
 
     it('should set settingSources to project only when loadUserClaudeSettings is false', async () => {
@@ -942,12 +784,6 @@ describe('InlineEditService', () => {
 
     it('returns null path for unknown tool input', () => {
       expect(getPathFromToolInput('Unknown', {})).toBeNull();
-    });
-
-    it('allows non-file tools in vault restriction hook', async () => {
-      const hook = createVaultRestrictionHook('/test/vault/path');
-      const res = await callHook(hook.hooks[0], { tool_name: 'WebSearch', tool_input: {} }, 't', {});
-      expect(res.continue).toBe(true);
     });
 
     it('extracts LS path from tool input', () => {

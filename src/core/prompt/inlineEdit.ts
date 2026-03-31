@@ -74,10 +74,8 @@ export function buildInlineEditPrompt(request: InlineEditRequest): string {
   return prompt;
 }
 
-export function getInlineEditSystemPrompt(allowExternalAccess: boolean = false): string {
-  const pathRules = allowExternalAccess
-    ? '- **Paths**: Prefer RELATIVE paths for vault files. Use absolute or `~` paths only when you intentionally need files outside the vault.'
-    : '- **Paths**: Must be RELATIVE to vault root (e.g., "notes/file.md").';
+export function getInlineEditSystemPrompt(): string {
+  const pathRules = '- **Paths**: Must be RELATIVE to vault root (e.g., "notes/file.md").';
 
   return `Today is ${getTodayDate()}.
 

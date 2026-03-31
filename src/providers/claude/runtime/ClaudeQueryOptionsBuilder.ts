@@ -13,6 +13,7 @@
 import type {
   CanUseTool,
   Options,
+  PermissionMode as SDKPermissionMode,
 } from '@anthropic-ai/claude-agent-sdk';
 
 import type { McpServerManager } from '../../../core/mcp/McpServerManager';
@@ -22,7 +23,7 @@ import {
   type SystemPromptSettings,
 } from '../../../core/prompt/mainAgent';
 import type { AppPluginManager } from '../../../core/providers/types';
-import type { ClaudianSettings, PermissionMode } from '../../../core/types/settings';
+import type { ClaudeSafeMode, ClaudianSettings, PermissionMode } from '../../../core/types/settings';
 import {
   type EffortLevel,
   isAdaptiveThinkingModel,
@@ -130,11 +131,6 @@ export class QueryOptionsBuilder {
     // Effort level requires restart (no setEffort() on persistent query)
     if (currentConfig.effortLevel !== newConfig.effortLevel) return true;
 
-    // Export paths affect system prompt
-    if (QueryOptionsBuilder.pathsChanged(currentConfig.allowedExportPaths, newConfig.allowedExportPaths)) {
-      return true;
-    }
-
     // External context paths require restart (additionalDirectories can't be updated dynamically)
     if (QueryOptionsBuilder.pathsChanged(currentConfig.externalContextPaths, newConfig.externalContextPaths)) {
       return true;
@@ -151,8 +147,6 @@ export class QueryOptionsBuilder {
     const systemPromptSettings: SystemPromptSettings = {
       mediaFolder: ctx.settings.mediaFolder,
       customPrompt: ctx.settings.systemPrompt,
-      allowedExportPaths: ctx.settings.allowedExportPaths,
-      allowExternalAccess: ctx.settings.allowExternalAccess,
       vaultPath: ctx.vaultPath,
       userName: ctx.settings.userName,
     };
@@ -160,6 +154,10 @@ export class QueryOptionsBuilder {
     const budgetSetting = ctx.settings.thinkingBudget;
     const budgetConfig = THINKING_BUDGETS.find(b => b.value === budgetSetting);
     const thinkingTokens = budgetConfig?.tokens ?? null;
+    const sdkPermissionMode = QueryOptionsBuilder.resolveClaudeSdkPermissionMode(
+      ctx.settings.permissionMode,
+      ctx.settings.claudeSafeMode,
+    );
 
     // Compute disallowedToolsKey from all disabled MCP tools (pre-registered upfront)
     const allDisallowedTools = ctx.mcpManager.getAllDisallowedMcpTools();
@@ -173,12 +171,12 @@ export class QueryOptionsBuilder {
       thinkingTokens: thinkingTokens && thinkingTokens > 0 ? thinkingTokens : null,
       effortLevel: isAdaptiveThinkingModel(ctx.settings.model) ? ctx.settings.effortLevel as EffortLevel : null,
       permissionMode: ctx.settings.permissionMode,
+      sdkPermissionMode,
       systemPromptKey: computeSystemPromptKey(systemPromptSettings),
       disallowedToolsKey,
       mcpServersKey: '', // Dynamic via setMcpServers, not tracked for restart
       pluginsKey,
       externalContextPaths: externalContextPaths || [],
-      allowedExportPaths: ctx.settings.allowedExportPaths,
       settingSources: ctx.settings.loadUserClaudeSettings ? 'user,project' : 'project',
       claudeCliPath: ctx.cliPath,
       enableChrome: ctx.settings.enableChrome,
@@ -192,8 +190,6 @@ export class QueryOptionsBuilder {
     const systemPrompt = buildSystemPrompt({
       mediaFolder: ctx.settings.mediaFolder,
       customPrompt: ctx.settings.systemPrompt,
-      allowedExportPaths: ctx.settings.allowedExportPaths,
-      allowExternalAccess: ctx.settings.allowExternalAccess,
       vaultPath: ctx.vaultPath,
       userName: ctx.settings.userName,
     });
@@ -223,7 +219,7 @@ export class QueryOptionsBuilder {
       ...DISABLED_BUILTIN_SUBAGENTS,
     ];
 
-    QueryOptionsBuilder.applyPermissionMode(options, permissionMode, ctx.canUseTool);
+    QueryOptionsBuilder.applyPermissionMode(options, permissionMode, ctx.settings.claudeSafeMode, ctx.canUseTool);
     QueryOptionsBuilder.applyThinking(options, ctx.settings, ctx.settings.model);
     options.hooks = ctx.hooks;
 
@@ -256,8 +252,6 @@ export class QueryOptionsBuilder {
     const systemPrompt = buildSystemPrompt({
       mediaFolder: ctx.settings.mediaFolder,
       customPrompt: ctx.settings.systemPrompt,
-      allowedExportPaths: ctx.settings.allowedExportPaths,
-      allowExternalAccess: ctx.settings.allowExternalAccess,
       vaultPath: ctx.vaultPath,
       userName: ctx.settings.userName,
     });
@@ -298,7 +292,7 @@ export class QueryOptionsBuilder {
       ...DISABLED_BUILTIN_SUBAGENTS,
     ];
 
-    QueryOptionsBuilder.applyPermissionMode(options, permissionMode, ctx.canUseTool);
+    QueryOptionsBuilder.applyPermissionMode(options, permissionMode, ctx.settings.claudeSafeMode, ctx.canUseTool);
     options.hooks = ctx.hooks;
     QueryOptionsBuilder.applyThinking(options, ctx.settings, ctx.modelOverride ?? ctx.settings.model);
 
@@ -323,9 +317,23 @@ export class QueryOptionsBuilder {
    * Always sets allowDangerouslySkipPermissions: true to enable dynamic
    * switching between permission modes without requiring a process restart.
    */
+  /**
+   * Resolve the SDK permission mode from Claudian's permission mode and safe mode setting.
+   * Shared by option construction and live session updates.
+   */
+  static resolveClaudeSdkPermissionMode(
+    permissionMode: PermissionMode,
+    claudeSafeMode: ClaudeSafeMode = 'acceptEdits',
+  ): SDKPermissionMode {
+    if (permissionMode === 'yolo') return 'bypassPermissions';
+    if (permissionMode === 'plan') return 'plan';
+    return claudeSafeMode;
+  }
+
   private static applyPermissionMode(
     options: Options,
     permissionMode: PermissionMode,
+    claudeSafeMode: ClaudeSafeMode,
     canUseTool?: CanUseTool
   ): void {
     options.allowDangerouslySkipPermissions = true;
@@ -334,13 +342,10 @@ export class QueryOptionsBuilder {
       options.canUseTool = canUseTool;
     }
 
-    if (permissionMode === 'yolo') {
-      options.permissionMode = 'bypassPermissions';
-    } else if (permissionMode === 'plan') {
-      options.permissionMode = 'plan';
-    } else {
-      options.permissionMode = 'acceptEdits';
-    }
+    options.permissionMode = QueryOptionsBuilder.resolveClaudeSdkPermissionMode(
+      permissionMode,
+      claudeSafeMode,
+    );
   }
 
   private static applyExtraArgs(options: Options, settings: ClaudianSettings): void {

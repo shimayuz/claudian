@@ -41,7 +41,6 @@ export const BUILT_IN_COMMANDS: BuiltInCommand[] = [
     action: 'add-dir',
     hasArgs: true,
     argumentHint: '[path/to/directory]',
-    providers: ['claude'],
   },
   {
     name: 'resume',

@@ -30,7 +30,7 @@ describe('systemPrompt', () => {
       const prompt = buildSystemPrompt();
       expect(prompt).toContain('Mocked Date');
       expect(prompt).toContain('Claudian');
-      expect(prompt).toContain('# Path Rules');
+      expect(prompt).toContain('## Path Conventions');
       expect(prompt).toContain('# User Message Format');
     });
 
@@ -44,38 +44,6 @@ describe('systemPrompt', () => {
       expect(prompt).not.toContain('### Skills');
     });
 
-    it('should include allowed export paths instructions when configured', () => {
-      const prompt = buildSystemPrompt({ allowedExportPaths: ['~/Desktop', '/tmp'] });
-      expect(prompt).toContain('# Allowed Export Paths');
-      expect(prompt).toContain('- ~/Desktop');
-      expect(prompt).toContain('- /tmp');
-      expect(prompt).toContain('write-only');
-    });
-
-    it('should not include export paths when all paths are whitespace-only', () => {
-      const prompt = buildSystemPrompt({ allowedExportPaths: ['   ', '', '  '] });
-      expect(prompt).not.toContain('# Allowed Export Paths');
-    });
-
-    it('should deduplicate and filter export paths', () => {
-      const prompt = buildSystemPrompt({ allowedExportPaths: ['~/Desktop', '~/Desktop', '', '/tmp'] });
-      expect(prompt).toContain('# Allowed Export Paths');
-      expect(prompt).toContain('- ~/Desktop');
-      expect(prompt).toContain('- /tmp');
-    });
-
-    it('should switch to unrestricted path guidance when external access is enabled', () => {
-      const prompt = buildSystemPrompt({
-        allowExternalAccess: true,
-        allowedExportPaths: ['~/Desktop'],
-      });
-
-      expect(prompt).toContain('| **External paths** | Read/Write |');
-      expect(prompt).toContain('# Preferred Export Paths');
-      expect(prompt).toContain('Suggested destinations for exports outside the vault');
-      expect(prompt).not.toContain('Write-only destinations outside the vault');
-      expect(prompt).not.toContain('NEVER use absolute paths in subagent prompts.');
-    });
   });
 
   describe('userName in system prompt', () => {
@@ -165,13 +133,6 @@ describe('systemPrompt', () => {
       expect(prompt).toContain('Mocked Date');
     });
 
-    it('should switch inline edit path guidance when external access is enabled', () => {
-      const prompt = getInlineEditSystemPrompt(true);
-
-      expect(prompt).toContain('Prefer RELATIVE paths for vault files');
-      expect(prompt).toContain('Use absolute or `~` paths only');
-      expect(prompt).not.toContain('Must be RELATIVE to vault root');
-    });
   });
 
   describe('computeSystemPromptKey', () => {
@@ -179,38 +140,24 @@ describe('systemPrompt', () => {
       const settings = {
         mediaFolder: 'attachments',
         customPrompt: 'Be helpful',
-        allowedExportPaths: ['/path/b', '/path/a'],
         vaultPath: '/vault',
         userName: 'Alice',
       };
 
       const key = computeSystemPromptKey(settings);
 
-      expect(key).toBe('attachments::Be helpful::/path/a|/path/b::/vault::Alice::false');
+      expect(key).toBe('attachments::Be helpful::/vault::Alice');
     });
 
     it('handles empty or undefined values', () => {
       const key = computeSystemPromptKey({
         mediaFolder: '',
         customPrompt: '',
-        allowedExportPaths: [],
         vaultPath: '',
         userName: '',
       });
 
-      expect(key).toBe('::::::::::false');
-    });
-
-    it('changes when external access changes', () => {
-      const base = {
-        mediaFolder: '',
-        customPrompt: '',
-        allowedExportPaths: [],
-        vaultPath: '/vault',
-      };
-
-      expect(computeSystemPromptKey({ ...base, allowExternalAccess: false }))
-        .not.toBe(computeSystemPromptKey({ ...base, allowExternalAccess: true }));
+      expect(key).toBe('::::::');
     });
   });
 });

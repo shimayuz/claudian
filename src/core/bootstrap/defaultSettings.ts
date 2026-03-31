@@ -19,9 +19,10 @@ export const DEFAULT_CLAUDIAN_SETTINGS: ClaudianSettings = {
 
   // Security
   enableBlocklist: true,
-  allowExternalAccess: false,
   blockedCommands: getDefaultBlockedCommands(),
   permissionMode: 'yolo',
+  claudeSafeMode: 'acceptEdits',
+  codexSafeMode: 'workspace-write',
 
   // Model & thinking (active-provider projection)
   model: 'haiku',
@@ -38,7 +39,6 @@ export const DEFAULT_CLAUDIAN_SETTINGS: ClaudianSettings = {
   excludedTags: [],
   mediaFolder: '',
   systemPrompt: '',
-  allowedExportPaths: ['~/Desktop', '~/Downloads'],
   persistentExternalContextPaths: [],
 
   // Environment

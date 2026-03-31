@@ -41,10 +41,6 @@ describe('types.ts', () => {
       expect(DEFAULT_SETTINGS.enableBlocklist).toBe(true);
     });
 
-    it('should have allowExternalAccess set to false by default', () => {
-      expect(DEFAULT_SETTINGS.allowExternalAccess).toBe(false);
-    });
-
     it('should have default blocked commands as platform-keyed object', () => {
       expect(DEFAULT_SETTINGS.blockedCommands).toHaveProperty('unix');
       expect(DEFAULT_SETTINGS.blockedCommands).toHaveProperty('windows');
@@ -100,20 +96,22 @@ describe('types.ts', () => {
       const settings: ClaudianSettings = {
         userName: '',
         enableBlocklist: false,
-        allowExternalAccess: false,
+
         blockedCommands: { unix: ['test'], windows: ['test-win'] },
         model: 'haiku',
         enableAutoTitleGeneration: true,
         titleGenerationModel: '',
         thinkingBudget: 'off',
         permissionMode: 'yolo',
+        claudeSafeMode: 'acceptEdits',
+        codexSafeMode: 'workspace-write',
         excludedTags: [],
         mediaFolder: '',
         environmentVariables: '',
         envSnippets: [],
         customContextLimits: {},
         systemPrompt: '',
-        allowedExportPaths: [],
+
         persistentExternalContextPaths: [],
         keyboardNavigation: { scrollUpKey: 'w', scrollDownKey: 's', focusInputKey: 'i' },
         locale: 'en',
@@ -149,20 +147,22 @@ describe('types.ts', () => {
       const settings: ClaudianSettings = {
         userName: '',
         enableBlocklist: true,
-        allowExternalAccess: false,
+
         blockedCommands: { unix: [], windows: [] },
         model: 'anthropic/custom-model-v1',
         enableAutoTitleGeneration: true,
         titleGenerationModel: '',
         thinkingBudget: 'medium',
         permissionMode: 'normal',
+        claudeSafeMode: 'acceptEdits',
+        codexSafeMode: 'workspace-write',
         excludedTags: ['private'],
         mediaFolder: 'attachments',
         environmentVariables: 'API_KEY=test',
         envSnippets: [],
         customContextLimits: {},
         systemPrompt: '',
-        allowedExportPaths: [],
+
         persistentExternalContextPaths: [],
         keyboardNavigation: { scrollUpKey: 'w', scrollDownKey: 's', focusInputKey: 'i' },
         locale: 'zh-CN',
@@ -196,7 +196,7 @@ describe('types.ts', () => {
       const settings: ClaudianSettings = {
         userName: '',
         enableBlocklist: true,
-        allowExternalAccess: false,
+
         blockedCommands: { unix: [], windows: [] },
         model: 'sonnet',
         enableAutoTitleGeneration: true,
@@ -205,13 +205,15 @@ describe('types.ts', () => {
         lastCustomModel: 'custom/model',
         thinkingBudget: 'high',
         permissionMode: 'yolo',
+        claudeSafeMode: 'acceptEdits',
+        codexSafeMode: 'workspace-write',
         excludedTags: [],
         mediaFolder: '',
         environmentVariables: '',
         envSnippets: [],
         customContextLimits: {},
         systemPrompt: '',
-        allowedExportPaths: [],
+
         persistentExternalContextPaths: [],
         keyboardNavigation: { scrollUpKey: 'w', scrollDownKey: 's', focusInputKey: 'i' },
         locale: 'en',

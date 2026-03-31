@@ -360,18 +360,31 @@ export function normalizePathForComparison(value: string): string {
 // Path Access Control
 // ============================================
 
-export function isPathWithinVault(candidatePath: string, vaultPath: string): boolean {
-  const vaultReal = normalizePathForComparison(resolveRealPath(vaultPath));
+export function isPathWithinDirectory(
+  candidatePath: string,
+  directoryPath: string,
+  relativeBasePath?: string,
+): boolean {
+  if (!candidatePath || !directoryPath) {
+    return false;
+  }
 
-  const normalizedPath = normalizePathBeforeResolution(candidatePath);
+  const directoryReal = normalizePathForComparison(resolveRealPath(directoryPath));
+  const normalizedCandidate = normalizePathForFilesystem(candidatePath);
+  if (!normalizedCandidate) {
+    return false;
+  }
 
-  const absCandidate = path.isAbsolute(normalizedPath)
-    ? normalizedPath
-    : path.resolve(vaultPath, normalizedPath);
+  const absCandidate = path.isAbsolute(normalizedCandidate)
+    ? normalizedCandidate
+    : path.resolve(relativeBasePath ?? directoryPath, normalizedCandidate);
 
   const resolvedCandidate = normalizePathForComparison(resolveRealPath(absCandidate));
+  return resolvedCandidate === directoryReal || resolvedCandidate.startsWith(directoryReal + '/');
+}
 
-  return resolvedCandidate === vaultReal || resolvedCandidate.startsWith(vaultReal + '/');
+export function isPathWithinVault(candidatePath: string, vaultPath: string): boolean {
+  return isPathWithinDirectory(candidatePath, vaultPath, vaultPath);
 }
 
 export function normalizePathForVault(
@@ -392,124 +405,4 @@ export function normalizePathForVault(
   }
 
   return normalizedRaw.replace(/\\/g, '/');
-}
-
-export function isPathInAllowedExportPaths(
-  candidatePath: string,
-  allowedExportPaths: string[],
-  vaultPath: string
-): boolean {
-  if (!allowedExportPaths || allowedExportPaths.length === 0) {
-    return false;
-  }
-
-  const normalizedCandidate = normalizePathBeforeResolution(candidatePath);
-
-  const absCandidate = path.isAbsolute(normalizedCandidate)
-    ? normalizedCandidate
-    : path.resolve(vaultPath, normalizedCandidate);
-
-  const resolvedCandidate = normalizePathForComparison(resolveRealPath(absCandidate));
-
-  for (const exportPath of allowedExportPaths) {
-    const normalizedExport = normalizePathBeforeResolution(exportPath);
-    const resolvedExport = normalizePathForComparison(resolveRealPath(normalizedExport));
-
-    if (
-      resolvedCandidate === resolvedExport ||
-      resolvedCandidate.startsWith(resolvedExport + '/')
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-export type PathAccessType = 'vault' | 'readwrite' | 'context' | 'export' | 'none';
-
-/**
- * Resolve access type for a candidate path with context/export overlap handling.
- * The most specific matching root wins; exact context+export matches are read-write.
- */
-export function getPathAccessType(
-  candidatePath: string,
-  allowedContextPaths: string[] | undefined,
-  allowedExportPaths: string[] | undefined,
-  vaultPath: string
-): PathAccessType {
-  if (!candidatePath) return 'none';
-
-  const vaultReal = normalizePathForComparison(resolveRealPath(vaultPath));
-
-  const normalizedCandidate = normalizePathBeforeResolution(candidatePath);
-
-  const absCandidate = path.isAbsolute(normalizedCandidate)
-    ? normalizedCandidate
-    : path.resolve(vaultPath, normalizedCandidate);
-
-  const resolvedCandidate = normalizePathForComparison(resolveRealPath(absCandidate));
-
-  if (resolvedCandidate === vaultReal || resolvedCandidate.startsWith(vaultReal + '/')) {
-    return 'vault';
-  }
-
-  // Allow access to specific safe subdirectories under ~/.claude/
-  const claudeDir = normalizePathForComparison(resolveRealPath(path.join(os.homedir(), '.claude')));
-  if (resolvedCandidate === claudeDir || resolvedCandidate.startsWith(claudeDir + '/')) {
-    const safeSubdirs = ['sessions', 'projects', 'commands', 'agents', 'skills', 'plans'];
-    const safeFiles = ['mcp.json', 'settings.json', 'settings.local.json', 'claudian-settings.json'];
-    const relativeToClaude = resolvedCandidate.slice(claudeDir.length + 1);
-
-    if (!relativeToClaude) {
-      // ~/.claude/ itself — read-only
-      return 'context';
-    }
-
-    const topSegment = relativeToClaude.split('/')[0];
-    if (safeSubdirs.includes(topSegment) || safeFiles.includes(topSegment)) {
-      return 'vault';
-    }
-
-    // Other paths under ~/.claude/ are read-only
-    return 'context';
-  }
-
-  const roots = new Map<string, { context: boolean; export: boolean }>();
-
-  const addRoot = (rawPath: string, kind: 'context' | 'export') => {
-    const trimmed = rawPath.trim();
-    if (!trimmed) return;
-    const normalized = normalizePathBeforeResolution(trimmed);
-    const resolved = normalizePathForComparison(resolveRealPath(normalized));
-    const existing = roots.get(resolved) ?? { context: false, export: false };
-    existing[kind] = true;
-    roots.set(resolved, existing);
-  };
-
-  for (const contextPath of allowedContextPaths ?? []) {
-    addRoot(contextPath, 'context');
-  }
-
-  for (const exportPath of allowedExportPaths ?? []) {
-    addRoot(exportPath, 'export');
-  }
-
-  let bestRoot: string | null = null;
-  let bestFlags: { context: boolean; export: boolean } | null = null;
-
-  for (const [root, flags] of roots) {
-    if (resolvedCandidate === root || resolvedCandidate.startsWith(root + '/')) {
-      if (!bestRoot || root.length > bestRoot.length) {
-        bestRoot = root;
-        bestFlags = flags;
-      }
-    }
-  }
-
-  if (!bestRoot || !bestFlags) return 'none';
-  if (bestFlags.context && bestFlags.export) return 'readwrite';
-  if (bestFlags.context) return 'context';
-  if (bestFlags.export) return 'export';
-  return 'none';
 }

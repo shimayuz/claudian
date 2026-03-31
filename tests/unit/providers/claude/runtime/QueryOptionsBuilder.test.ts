@@ -43,7 +43,8 @@ function createMockSettings(overrides: Partial<ClaudianSettings> = {}): Claudian
     },
     permissions: [],
     permissionMode: 'yolo',
-    allowedExportPaths: [],
+    claudeSafeMode: 'acceptEdits',
+    codexSafeMode: 'workspace-write',
     loadUserClaudeSettings: false,
     mediaFolder: '',
     systemPrompt: '',
@@ -72,12 +73,12 @@ function createMockPersistentQueryConfig(
     thinkingTokens: null,
     effortLevel: null,
     permissionMode: 'yolo',
+    sdkPermissionMode: 'bypassPermissions',
     systemPromptKey: 'key1',
     disallowedToolsKey: '',
     mcpServersKey: '',
     pluginsKey: '',
     externalContextPaths: [],
-    allowedExportPaths: [],
     settingSources: 'project',
     claudeCliPath: '/mock/claude',
     enableChrome: false,
@@ -126,12 +127,6 @@ describe('QueryOptionsBuilder', () => {
     it('returns true when claudeCliPath changes', () => {
       const currentConfig = createMockPersistentQueryConfig();
       const newConfig = { ...currentConfig, claudeCliPath: '/new/claude' };
-      expect(QueryOptionsBuilder.needsRestart(currentConfig, newConfig)).toBe(true);
-    });
-
-    it('returns true when allowedExportPaths changes', () => {
-      const currentConfig = createMockPersistentQueryConfig({ allowedExportPaths: ['/path/a'] });
-      const newConfig = { ...currentConfig, allowedExportPaths: ['/path/a', '/path/b'] };
       expect(QueryOptionsBuilder.needsRestart(currentConfig, newConfig)).toBe(true);
     });
 
@@ -205,8 +200,19 @@ describe('QueryOptionsBuilder', () => {
       expect(config.model).toBe('claude-sonnet-4-5');
       expect(config.thinkingTokens).toBeNull();
       expect(config.permissionMode).toBe('yolo');
+      expect(config.sdkPermissionMode).toBe('bypassPermissions');
       expect(config.settingSources).toBe('project');
       expect(config.claudeCliPath).toBe('/mock/claude');
+    });
+
+    it('tracks resolved sdkPermissionMode for normal mode', () => {
+      const ctx = createMockContext({
+        settings: createMockSettings({ permissionMode: 'normal', claudeSafeMode: 'default' }),
+      });
+      const config = QueryOptionsBuilder.buildPersistentQueryConfig(ctx);
+
+      expect(config.permissionMode).toBe('normal');
+      expect(config.sdkPermissionMode).toBe('default');
     });
 
     it('includes thinking tokens when budget is set', () => {
@@ -282,7 +288,7 @@ describe('QueryOptionsBuilder', () => {
       expect(options.canUseTool).toBe(canUseTool);
     });
 
-    it('sets normal mode options correctly', () => {
+    it('sets normal mode options correctly (default claudeSafeMode)', () => {
       const canUseTool = jest.fn();
       const ctx = {
         ...createMockContext({
@@ -298,6 +304,33 @@ describe('QueryOptionsBuilder', () => {
       // Always true to enable dynamic switching to bypassPermissions without restart
       expect(options.allowDangerouslySkipPermissions).toBe(true);
       expect(options.canUseTool).toBe(canUseTool);
+    });
+
+    it('resolves claudeSafeMode "default" when permissionMode is normal', () => {
+      const ctx = {
+        ...createMockContext({
+          settings: createMockSettings({ permissionMode: 'normal', claudeSafeMode: 'default' }),
+        }),
+        abortController: new AbortController(),
+        hooks: {},
+      };
+      const options = QueryOptionsBuilder.buildPersistentQueryOptions(ctx);
+
+      expect(options.permissionMode).toBe('default');
+      expect(options.allowDangerouslySkipPermissions).toBe(true);
+    });
+
+    it('ignores claudeSafeMode when permissionMode is yolo', () => {
+      const ctx = {
+        ...createMockContext({
+          settings: createMockSettings({ permissionMode: 'yolo', claudeSafeMode: 'default' }),
+        }),
+        abortController: new AbortController(),
+        hooks: {},
+      };
+      const options = QueryOptionsBuilder.buildPersistentQueryOptions(ctx);
+
+      expect(options.permissionMode).toBe('bypassPermissions');
     });
 
     it('sets plan mode options correctly', () => {

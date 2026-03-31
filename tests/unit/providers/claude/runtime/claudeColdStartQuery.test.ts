@@ -13,7 +13,6 @@ const sdkMock = sdkModule as unknown as {
 
 jest.mock('@/utils/path', () => ({
   getVaultPath: jest.fn().mockReturnValue('/test/vault'),
-  getPathAccessType: jest.fn().mockReturnValue('vault'),
 }));
 
 jest.mock('@/utils/env', () => ({
@@ -30,7 +29,6 @@ jest.mock('@/core/providers/ProviderSettingsCoordinator', () => ({
       thinkingBudget: 'off',
       effortLevel: 'medium',
       loadUserClaudeSettings: false,
-      allowExternalAccess: false,
     }),
   },
 }));

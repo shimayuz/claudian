@@ -3,8 +3,6 @@ import { getTodayDate } from '../../utils/date';
 export interface SystemPromptSettings {
   mediaFolder?: string;
   customPrompt?: string;
-  allowedExportPaths?: string[];
-  allowExternalAccess?: boolean;
   vaultPath?: string;
   userName?: string;
 }
@@ -13,59 +11,32 @@ export interface SystemPromptBuildOptions {
   appendices?: string[];
 }
 
-function getPathRules(vaultPath?: string, allowExternalAccess: boolean = false): string {
-  if (!allowExternalAccess) {
-    return `## Path Rules (MUST FOLLOW)
+function getPathRules(vaultPath?: string): string {
+  return `## Path Conventions
 
 | Location | Access | Path Format | Example |
 |----------|--------|-------------|---------|
 | **Vault** | Read/Write | Relative from vault root | \`notes/my-note.md\`, \`.\` |
-| **Export paths** | Write-only | \`~\` or absolute | \`~/Desktop/output.docx\` |
 | **External contexts** | Full access | Absolute path | \`/Users/me/Workspace/file.ts\` |
 
-**Vault files** (default):
+**Vault files** (default working directory):
 - ✓ Correct: \`notes/my-note.md\`, \`my-note.md\`, \`folder/subfolder/file.md\`, \`.\`
 - ✗ WRONG: \`/notes/my-note.md\`, \`${vaultPath || '/absolute/path'}/file.md\`
 - A leading slash or absolute path will FAIL for vault operations.
 
-**Path specificity**: When paths overlap, the **more specific path wins**:
-- If \`~/Desktop\` is export (write-only) and \`~/Desktop/Workspace\` is external context (full access)
-- -> Files in \`~/Desktop/Workspace\` have full read/write access
-- -> Files directly in \`~/Desktop\` remain write-only`;
-  }
-
-  return `## Path Rules (MUST FOLLOW)
-
-| Location | Access | Path Format | Example |
-|----------|--------|-------------|---------|
-| **Vault** | Read/Write | Relative from vault root preferred | \`notes/my-note.md\`, \`.\` |
-| **External paths** | Read/Write | \`~\` or absolute | \`~/Desktop/output.docx\`, \`/Users/me/Workspace/file.ts\` |
-| **Session external contexts** | Full access | Absolute path | \`/Users/me/Workspace\` |
-
-**Vault files**:
-- Prefer relative paths for files inside the vault.
-- Absolute vault paths are allowed when needed, but relative paths are usually simpler and less error-prone.
-
-**External files**:
-- Use absolute or \`~\` paths for files outside the vault.
-- Be explicit about the target path and avoid broad filesystem operations unless they are necessary.
-
-**Path specificity**:
-- When multiple directories could match, use the narrowest path that fits the task.
-- Prefer the most specific external directory instead of a broad parent path.`;
+**External context paths**: When external directories are selected, use absolute paths to access files there. These directories are explicitly granted for the current session.`;
 }
 
 function getBaseSystemPrompt(
   vaultPath?: string,
   userName?: string,
-  allowExternalAccess: boolean = false,
 ): string {
   const vaultInfo = vaultPath ? `\n\nVault absolute path: ${vaultPath}` : '';
   const trimmedUserName = userName?.trim();
   const userContext = trimmedUserName
     ? `## User Context\n\nYou are collaborating with **${trimmedUserName}**.\n\n`
     : '';
-  const pathRules = getPathRules(vaultPath, allowExternalAccess);
+  const pathRules = getPathRules(vaultPath);
 
   return `${userContext}## Time Context
 
@@ -188,41 +159,6 @@ Then read with \`Read file_path="${examplePath}$img_name"\`, and replace the mar
 **Benefits**: Image becomes a permanent vault asset, works offline, and uses Obsidian's native embed syntax.`;
 }
 
-function getExportInstructions(
-  allowedExportPaths: string[],
-  allowExternalAccess: boolean = false,
-): string {
-  if (allowedExportPaths.length === 0) {
-    return '';
-  }
-
-  const uniquePaths = Array.from(new Set(allowedExportPaths.map((p) => p.trim()).filter(Boolean)));
-  if (uniquePaths.length === 0) {
-    return '';
-  }
-
-  const formattedPaths = uniquePaths.map((p) => `- ${p}`).join('\n');
-  const heading = allowExternalAccess ? 'Preferred Export Paths' : 'Allowed Export Paths';
-  const description = allowExternalAccess
-    ? 'Suggested destinations for exports outside the vault:'
-    : 'Write-only destinations outside the vault:';
-
-  return `
-
-## ${heading}
-
-${description}
-
-${formattedPaths}
-
-Examples:
-\`\`\`bash
-pandoc ./note.md -o ~/Desktop/note.docx   # Direct export
-pandoc ./note.md | head -100              # Pipe to stdout (no temp file)
-cp ./note.md ~/Desktop/note.md
-\`\`\``;
-}
-
 function getAppendixSections(appendices?: string[]): string {
   if (!appendices || appendices.length === 0) {
     return '';
@@ -243,12 +179,9 @@ export function buildSystemPrompt(
   settings: SystemPromptSettings = {},
   options: SystemPromptBuildOptions = {},
 ): string {
-  const allowExternalAccess = settings.allowExternalAccess ?? false;
-
-  let prompt = getBaseSystemPrompt(settings.vaultPath, settings.userName, allowExternalAccess);
+  let prompt = getBaseSystemPrompt(settings.vaultPath, settings.userName);
 
   prompt += getImageInstructions(settings.mediaFolder || '');
-  prompt += getExportInstructions(settings.allowedExportPaths || [], allowExternalAccess);
   prompt += getAppendixSections(options.appendices);
 
   if (settings.customPrompt?.trim()) {
@@ -270,10 +203,8 @@ export function computeSystemPromptKey(
   const parts = [
     settings.mediaFolder || '',
     settings.customPrompt || '',
-    (settings.allowedExportPaths || []).sort().join('|'),
     settings.vaultPath || '',
     (settings.userName || '').trim(),
-    String(settings.allowExternalAccess ?? false),
   ];
 
   if (appendixKey) {

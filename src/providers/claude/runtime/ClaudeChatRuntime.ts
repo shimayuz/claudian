@@ -67,7 +67,7 @@ import type { ClaudianSettings, PermissionMode } from '../../../core/types/setti
 import type ClaudianPlugin from '../../../main';
 import { stripCurrentNoteContext } from '../../../utils/context';
 import { getEnhancedPath, getMissingNodeError, parseEnvironmentVariables } from '../../../utils/env';
-import { getPathAccessType, getVaultPath } from '../../../utils/path';
+import { getVaultPath } from '../../../utils/path';
 import {
   buildContextFromHistory,
   buildPromptWithHistoryContext,
@@ -76,7 +76,7 @@ import {
 } from '../../../utils/session';
 import { CLAUDE_PROVIDER_CAPABILITIES } from '../capabilities';
 import { loadSubagentFinalResult, loadSubagentToolCalls } from '../history/ClaudeHistoryStore';
-import { createBlocklistHook, createVaultRestrictionHook } from '../hooks/SecurityHooks';
+import { createBlocklistHook } from '../hooks/SecurityHooks';
 import { createStopSubagentHook, type SubagentHookState } from '../hooks/SubagentHooks';
 import { encodeClaudeTurn } from '../prompt/ClaudeTurnEncoder';
 import { isSessionInitEvent, isStreamChunk } from '../sdk/typeGuards';
@@ -638,12 +638,8 @@ export class ClaudianService implements ChatRuntime {
   /**
    * Builds the hooks for SDK options.
    * Hooks need access to `this` for dynamic settings, so they're built here.
-   *
-   * @param externalContextPaths - Optional external context paths for cold-start queries.
-   *        If not provided, the closure reads this.currentExternalContextPaths at execution
-   *        time (for persistent queries where the value may change dynamically).
    */
-  private buildHooks(externalContextPaths?: string[]) {
+  private buildHooks() {
     const blocklistHook = createBlocklistHook(() => ({
       blockedCommands: this.plugin.settings.blockedCommands,
       enableBlocklist: this.plugin.settings.enableBlocklist,
@@ -651,26 +647,7 @@ export class ClaudianService implements ChatRuntime {
 
     const hooks: Options['hooks'] = {};
 
-    if (this.plugin.settings.allowExternalAccess) {
-      hooks.PreToolUse = [blocklistHook];
-    } else {
-      const vaultRestrictionHook = createVaultRestrictionHook({
-        getPathAccessType: (p) => {
-          if (!this.vaultPath) return 'vault';
-          // For cold-start queries, use the passed externalContextPaths.
-          // For persistent queries, read this.currentExternalContextPaths at execution time
-          // so dynamic updates are reflected.
-          const paths = externalContextPaths ?? this.currentExternalContextPaths;
-          return getPathAccessType(
-            p,
-            paths,
-            this.plugin.settings.allowedExportPaths,
-            this.vaultPath
-          );
-        },
-      });
-      hooks.PreToolUse = [blocklistHook, vaultRestrictionHook];
-    }
+    hooks.PreToolUse = [blocklistHook];
 
     // Always register subagent hooks — closures resolve provider at execution time
     // so hooks work even when provider is set after the persistent query starts.
@@ -832,6 +809,7 @@ export class ClaudianService implements ChatRuntime {
         if (event.type === 'tool_use' && event.name === TOOL_ENTER_PLAN_MODE) {
           if (this.currentConfig) {
             this.currentConfig.permissionMode = 'plan';
+            this.currentConfig.sdkPermissionMode = 'plan';
           }
           if (this.permissionModeSyncCallback) {
             try { this.permissionModeSyncCallback('plan'); } catch { /* non-critical */ }
@@ -1439,16 +1417,24 @@ export class ClaudianService implements ChatRuntime {
       }
     }
 
-    // Update permission mode if changed
-    // Since we always start with allowDangerouslySkipPermissions: true,
-    // we can dynamically switch between modes without restarting
-    if (this.currentConfig && permissionMode !== this.currentConfig.permissionMode) {
-      const sdkMode = this.mapToSDKPermissionMode(permissionMode);
-      try {
-        await this.persistentQuery.setPermissionMode(sdkMode);
+    // Update permission mode if the effective SDK mode changed.
+    // Compares resolved SDK modes so that changing claudeSafeMode while
+    // remaining in 'normal' triggers an update.
+    if (this.currentConfig) {
+      const sdkMode = this.resolveSDKPermissionMode(permissionMode);
+      const currentSdkMode = this.currentConfig.sdkPermissionMode ?? null;
+      if (sdkMode !== currentSdkMode) {
+        try {
+          await this.persistentQuery.setPermissionMode(sdkMode);
+          this.currentConfig.permissionMode = permissionMode;
+          this.currentConfig.sdkPermissionMode = sdkMode;
+        } catch {
+          new Notice('Failed to update permission mode');
+        }
+      } else {
+        // Sync the coarse mode even when SDK mode didn't change
         this.currentConfig.permissionMode = permissionMode;
-      } catch {
-        new Notice('Failed to update permission mode');
+        this.currentConfig.sdkPermissionMode = sdkMode;
       }
     }
 
@@ -1569,7 +1555,7 @@ export class ClaudianService implements ChatRuntime {
     const queryPrompt = this.buildPromptWithImages(prompt, images);
     const baseContext = this.buildQueryOptionsContext(cwd, cliPath);
     const externalContextPaths = queryOptions?.externalContextPaths || [];
-    const hooks = this.buildHooks(externalContextPaths);
+    const hooks = this.buildHooks();
     const hasEditorContext = prompt.includes('<editor_selection');
 
     let allowedTools: string[] | undefined;
@@ -1990,10 +1976,11 @@ export class ClaudianService implements ChatRuntime {
             return { behavior: 'deny', message: decision.text, interrupt: false };
           }
           // Callback already restored plugin.settings.permissionMode
-          const sdkMode = this.mapToSDKPermissionMode(this.plugin.settings.permissionMode);
+          const sdkMode = this.resolveSDKPermissionMode(this.plugin.settings.permissionMode);
           // Sync config so applyDynamicUpdates doesn't re-send
           if (this.currentConfig) {
             this.currentConfig.permissionMode = this.plugin.settings.permissionMode;
+            this.currentConfig.sdkPermissionMode = sdkMode;
           }
           return {
             behavior: 'allow',
@@ -2065,9 +2052,10 @@ export class ClaudianService implements ChatRuntime {
     };
   }
 
-  private mapToSDKPermissionMode(mode: PermissionMode): SDKPermissionMode {
-    if (mode === 'yolo') return 'bypassPermissions';
-    if (mode === 'plan') return 'plan';
-    return 'acceptEdits';
+  private resolveSDKPermissionMode(mode: PermissionMode): SDKPermissionMode {
+    return QueryOptionsBuilder.resolveClaudeSdkPermissionMode(
+      mode,
+      this.plugin.settings.claudeSafeMode,
+    ) as SDKPermissionMode;
   }
 }

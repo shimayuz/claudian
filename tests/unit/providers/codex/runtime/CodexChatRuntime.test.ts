@@ -111,8 +111,6 @@ function createMockPlugin(overrides: Record<string, unknown> = {}): any {
       effortLevel: 'medium',
       systemPrompt: '',
       mediaFolder: '',
-      allowedExportPaths: [],
-      allowExternalAccess: false,
       userName: '',
       ...overrides,
     },
@@ -1075,6 +1073,94 @@ describe('CodexChatRuntime', () => {
         excludeTmpdirEnvVar: false,
         excludeSlashTmp: false,
       });
+    });
+  });
+
+  describe('query - codexSafeMode read-only', () => {
+    it('sends sandbox read-only on thread/resume when codexSafeMode is read-only', async () => {
+      const plugin = createMockPlugin({ permissionMode: 'normal', codexSafeMode: 'read-only' });
+      const rt = new CodexChatRuntime(plugin);
+
+      rt.syncConversationState({
+        sessionId: 'thread-resume-read-only',
+        providerState: { threadId: 'thread-resume-read-only', sessionFilePath: '/tmp/resume.jsonl' },
+      });
+
+      setupDefaultRequestMock('thread-resume-read-only');
+      captureHandlers();
+
+      await collectChunks(rt.query(createTurn('resume')));
+
+      const resumeCall = mockTransportRequest.mock.calls.find(
+        (call: any[]) => call[0] === 'thread/resume',
+      );
+      expect(resumeCall).toBeDefined();
+      expect(resumeCall[1].sandbox).toBe('read-only');
+      expect(resumeCall[1].approvalPolicy).toBe('on-request');
+
+      rt.cleanup();
+    });
+
+    it('sends sandbox read-only on thread/start when codexSafeMode is read-only', async () => {
+      const plugin = createMockPlugin({ permissionMode: 'normal', codexSafeMode: 'read-only' });
+      const rt = new CodexChatRuntime(plugin);
+      captureHandlers();
+      setupDefaultRequestMock();
+
+      const turn = createTurn('hello');
+      await collectChunks(rt.query(turn));
+
+      const threadStartCall = mockTransportRequest.mock.calls.find(
+        (call: any[]) => call[0] === 'thread/start',
+      );
+      expect(threadStartCall[1].sandbox).toBe('read-only');
+      expect(threadStartCall[1].approvalPolicy).toBe('on-request');
+    });
+
+    it('sends readOnly sandboxPolicy on turn/start when codexSafeMode is read-only', async () => {
+      const plugin = createMockPlugin({ permissionMode: 'normal', codexSafeMode: 'read-only' });
+      const rt = new CodexChatRuntime(plugin);
+      captureHandlers();
+      setupDefaultRequestMock();
+
+      const turn = createTurn('hello');
+      await collectChunks(rt.query(turn));
+
+      const turnStartCall = mockTransportRequest.mock.calls.find(
+        (call: any[]) => call[0] === 'turn/start',
+      );
+      expect(turnStartCall[1].sandboxPolicy).toEqual({
+        type: 'readOnly',
+        access: { type: 'fullAccess' },
+        networkAccess: false,
+      });
+    });
+
+    it('reasserts readOnly sandboxPolicy on already-loaded threads when codexSafeMode changes', async () => {
+      const plugin = createMockPlugin({ permissionMode: 'normal', codexSafeMode: 'workspace-write' });
+      const rt = new CodexChatRuntime(plugin);
+
+      await collectChunks(rt.query(createTurn('first')));
+
+      mockTransportRequest.mockClear();
+      captureHandlers();
+      setupDefaultRequestMock('thread-001', 'turn-002');
+
+      plugin.settings.codexSafeMode = 'read-only';
+      await collectChunks(rt.query(createTurn('second')));
+
+      const turnStartCall = mockTransportRequest.mock.calls.find(
+        (call: any[]) => call[0] === 'turn/start',
+      );
+      expect(turnStartCall).toBeDefined();
+      expect(turnStartCall[1].approvalPolicy).toBe('on-request');
+      expect(turnStartCall[1].sandboxPolicy).toEqual({
+        type: 'readOnly',
+        access: { type: 'fullAccess' },
+        networkAccess: false,
+      });
+
+      rt.cleanup();
     });
   });
 

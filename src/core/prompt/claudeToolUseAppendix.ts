@@ -1,18 +1,11 @@
-function getSubagentPathRules(allowExternalAccess: boolean = false): string {
-  if (!allowExternalAccess) {
-    return `**CRITICAL - Subagent Path Rules:**
-- Subagents inherit the vault as their working directory.
-- Reference files using **RELATIVE** paths.
-- NEVER use absolute paths in subagent prompts.`;
-  }
-
+function getSubagentPathRules(): string {
   return `**CRITICAL - Subagent Path Rules:**
 - Subagents inherit the vault as their working directory.
 - Reference vault files using **RELATIVE** paths.
-- Use absolute or \`~\` paths only when you intentionally need files outside the vault.`;
+- Use absolute or \`~\` paths only when you intentionally need files outside the vault (e.g. external context directories).`;
 }
 
-export function buildClaudeToolUseAppendix(allowExternalAccess: boolean = false): string {
+export function buildClaudeToolUseAppendix(): string {
   return `## Tool Usage Guidelines
 
 Standard tools (Read, Write, Edit, Glob, Grep, LS, Bash, WebSearch, WebFetch, Skills) work as expected.
@@ -54,7 +47,7 @@ Use WebSearch strictly according to the following logic:
 
 Spawn subagents for complex multi-step tasks. Parameters: \`prompt\`, \`description\`, \`subagent_type\`, \`run_in_background\`.
 
-${getSubagentPathRules(allowExternalAccess)}
+${getSubagentPathRules()}
 
 **When to use:**
 - Parallelizable work (main + subagent or multiple subagents)

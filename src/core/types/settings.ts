@@ -157,6 +157,12 @@ export interface InstructionRefineResult {
 /** Permission mode for tool execution. */
 export type PermissionMode = 'yolo' | 'plan' | 'normal';
 
+/** What "Safe" means for the Claude provider. */
+export type ClaudeSafeMode = 'acceptEdits' | 'default';
+
+/** What "Safe" means for the Codex provider. */
+export type CodexSafeMode = 'workspace-write' | 'read-only';
+
 /** Hostname-keyed CLI paths for per-device configuration. */
 export type HostnameCliPaths = Record<string, string>;
 
@@ -173,9 +179,10 @@ export interface ClaudianSettings {
 
   // Security
   enableBlocklist: boolean;
-  allowExternalAccess: boolean;
   blockedCommands: PlatformBlockedCommands;
   permissionMode: PermissionMode;
+  claudeSafeMode: ClaudeSafeMode;
+  codexSafeMode: CodexSafeMode;
 
   // Model & thinking (provider interprets values)
   model: string;
@@ -192,7 +199,6 @@ export interface ClaudianSettings {
   excludedTags: string[];
   mediaFolder: string;
   systemPrompt: string;
-  allowedExportPaths: string[];
   persistentExternalContextPaths: string[];
 
   // Environment

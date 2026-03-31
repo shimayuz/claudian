@@ -435,20 +435,6 @@ export class ClaudianSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(container)
-      .setName(t('settings.allowExternalAccess.name'))
-      .setDesc(t('settings.allowExternalAccess.desc'))
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.allowExternalAccess)
-          .onChange(async (value) => {
-            this.plugin.settings.allowExternalAccess = value;
-            await this.plugin.saveSettings();
-            this.display();
-            await this.restartServiceForPromptChange();
-          })
-      );
-
     const platformKey = getCurrentPlatformKey();
     const isWindows = platformKey === 'windows';
     const platformLabel = isWindows ? 'Windows' : 'Unix';
@@ -494,39 +480,28 @@ export class ClaudianSettingTab extends PluginSettingTab {
         });
     }
 
-    new Setting(container)
-      .setName(t('settings.exportPaths.name'))
-      .setDesc(
-        this.plugin.settings.allowExternalAccess
-          ? t('settings.exportPaths.disabledDesc')
-          : t('settings.exportPaths.desc')
-      )
-      .addTextArea((text) => {
-        const placeholder = process.platform === 'win32'
-          ? '~/Desktop\n~/Downloads\n%TEMP%'
-          : '~/Desktop\n~/Downloads\n/tmp';
-        text
-          .setPlaceholder(placeholder)
-          .setValue(this.plugin.settings.allowedExportPaths.join('\n'))
-          .setDisabled(this.plugin.settings.allowExternalAccess)
-          .onChange(async (value) => {
-            this.plugin.settings.allowedExportPaths = value
-              .split(/\r?\n/)
-              .map((s) => s.trim())
-              .filter((s) => s.length > 0);
-            await this.plugin.saveSettings();
-          });
-        text.inputEl.rows = 4;
-        text.inputEl.cols = 40;
-        text.inputEl.addEventListener('blur', () => this.restartServiceForPromptChange());
-      });
-
   }
 
   // ── Claude tab ──
 
   private renderClaudeTab(container: HTMLElement): void {
     const claudeWorkspace = getClaudeWorkspaceServices();
+
+    new Setting(container).setName(t('settings.safety')).setHeading();
+
+    new Setting(container)
+      .setName(t('settings.claudeSafeMode.name'))
+      .setDesc(t('settings.claudeSafeMode.desc'))
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption('acceptEdits', 'acceptEdits')
+          .addOption('default', 'default')
+          .setValue(this.plugin.settings.claudeSafeMode ?? 'acceptEdits')
+          .onChange(async (value) => {
+            this.plugin.settings.claudeSafeMode = value as 'acceptEdits' | 'default';
+            await this.plugin.saveSettings();
+          });
+      });
 
     new Setting(container).setName(t('settings.slashCommands.name')).setHeading();
 
@@ -893,6 +868,21 @@ export class ClaudianSettingTab extends PluginSettingTab {
         text.inputEl.style.borderColor = 'var(--text-error)';
       }
     });
+
+    // Codex safe mode
+    new Setting(container)
+      .setName(t('settings.codexSafeMode.name'))
+      .setDesc(t('settings.codexSafeMode.desc'))
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption('workspace-write', 'workspace-write')
+          .addOption('read-only', 'read-only')
+          .setValue(this.plugin.settings.codexSafeMode ?? 'workspace-write')
+          .onChange(async (value) => {
+            this.plugin.settings.codexSafeMode = value as 'workspace-write' | 'read-only';
+            await this.plugin.saveSettings();
+          });
+      });
 
     // Reasoning summary
     const SUMMARY_OPTIONS: { value: string; label: string }[] = [

@@ -2,7 +2,11 @@
  * Types and constants for the ClaudianService module.
  */
 
-import type { SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  PermissionMode as SDKPermissionMode,
+  SDKMessage,
+  SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 
 import type { StreamChunk } from '../../../core/types';
 import type { PermissionMode } from '../../../core/types/settings';
@@ -104,12 +108,12 @@ export interface PersistentQueryConfig {
   thinkingTokens: number | null;
   effortLevel: EffortLevel | null;
   permissionMode: PermissionMode | null;
+  sdkPermissionMode: SDKPermissionMode | null;
   systemPromptKey: string;
   disallowedToolsKey: string;
   mcpServersKey: string;
   pluginsKey: string;
   externalContextPaths: string[];
-  allowedExportPaths: string[];
   settingSources: string;
   claudeCliPath: string;
   enableChrome: boolean;  // Whether --chrome flag is passed to CLI

@@ -37,6 +37,8 @@ function stripLegacyFields(settings: Record<string, unknown>): Record<string, un
     show1MModel: _show1MModel,
     hiddenSlashCommands: _hiddenSlashCommands,
     slashCommands: _slashCommands,
+    allowExternalAccess: _allowExternalAccess,
+    allowedExportPaths: _allowedExportPaths,
     ...cleaned
   } = settings;
   return cleaned;
@@ -119,6 +121,8 @@ export class ClaudianSettingsStorage {
       || 'slashCommands' in stored
       || 'hiddenSlashCommands' in stored
       || 'activeConversationId' in stored
+      || 'allowExternalAccess' in stored
+      || 'allowedExportPaths' in stored
     ) {
       await this.adapter.write(CLAUDIAN_SETTINGS_PATH, JSON.stringify(storedWithoutLegacy, null, 2));
     }

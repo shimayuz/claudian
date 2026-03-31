@@ -158,9 +158,9 @@ describe('builtInCommands', () => {
       expect(clearCmd?.providers).toBeUndefined();
     });
 
-    it('add-dir is restricted to claude', () => {
+    it('add-dir has no provider restriction', () => {
       const cmd = BUILT_IN_COMMANDS.find((c) => c.name === 'add-dir');
-      expect(cmd?.providers).toEqual(['claude']);
+      expect(cmd?.providers).toBeUndefined();
     });
 
     it('resume is restricted to claude', () => {
@@ -189,19 +189,19 @@ describe('builtInCommands', () => {
       expect(commands.map(c => c.name)).toContain('fork');
     });
 
-    it('returns only universal commands for codex provider', () => {
+    it('returns universal and shared commands for codex provider', () => {
       const commands = getBuiltInCommandsForDropdown('codex');
       const names = commands.map(c => c.name);
       expect(names).toContain('clear');
-      expect(names).not.toContain('add-dir');
+      expect(names).toContain('add-dir');
       expect(names).not.toContain('resume');
       expect(names).not.toContain('fork');
     });
 
-    it('returns only universal commands for unknown provider', () => {
+    it('returns only non-restricted commands for codex provider', () => {
       const commands = getBuiltInCommandsForDropdown('codex');
-      expect(commands.length).toBe(1);
-      expect(commands[0].name).toBe('clear');
+      expect(commands.length).toBe(2);
+      expect(commands.map(c => c.name)).toEqual(['clear', 'add-dir']);
     });
   });
 
