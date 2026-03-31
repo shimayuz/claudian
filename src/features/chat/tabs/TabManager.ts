@@ -93,12 +93,19 @@ export class TabManager implements TabManagerInterface {
       ? await this.plugin.getConversationById(conversationId)
       : undefined;
 
+    // Inherit the active tab's provider so the new blank tab picks up its model
+    const activeTab = this.getActiveTab();
+    const defaultProviderId = conversation
+      ? undefined
+      : (activeTab ? getTabProviderId(activeTab, this.plugin) : undefined);
+
     const tab = createTab({
       plugin: this.plugin,
       mcpManager: this.mcpManager,
       containerEl: this.containerEl,
       conversation: conversation ?? undefined,
       tabId,
+      defaultProviderId,
       onStreamingChanged: (isStreaming) => {
         this.callbacks.onTabStreamingChanged?.(tab.id, isStreaming);
       },

@@ -74,6 +74,23 @@ export function getBlankTabModelOptions(
   });
 }
 
+/**
+ * Resolves the draft model for a new blank tab by projecting provider-specific
+ * saved settings. Without this, `plugin.settings.model` reflects only the
+ * settings-provider's model, which may belong to a different provider.
+ */
+function resolveBlankTabModel(
+  plugin: ClaudianPlugin,
+  providerId?: ProviderId,
+): string {
+  const settings = plugin.settings as unknown as Record<string, unknown>;
+  if (providerId) {
+    const snapshot = ProviderSettingsCoordinator.getProviderSettingsSnapshot(settings, providerId);
+    return snapshot.model as string;
+  }
+  return settings.model as string;
+}
+
 export interface TabCreateOptions {
   plugin: ClaudianPlugin;
   mcpManager: McpServerManager;
@@ -81,6 +98,8 @@ export interface TabCreateOptions {
   containerEl: HTMLElement;
   conversation?: Conversation;
   tabId?: TabId;
+  /** Provider to inherit for blank tabs (e.g. from the active tab). */
+  defaultProviderId?: ProviderId;
   onStreamingChanged?: (isStreaming: boolean) => void;
   onTitleChanged?: (title: string) => void;
   onAttentionChanged?: (needsAttention: boolean) => void;
@@ -330,7 +349,7 @@ export function createTab(options: TabCreateOptions): TabData {
   const dom = buildTabDOM(contentEl);
 
   const isBound = !!conversation?.id;
-  const draftModel = isBound ? null : (plugin.settings.model as string);
+  const draftModel = isBound ? null : resolveBlankTabModel(plugin, options.defaultProviderId);
   const initialProviderId = conversation?.providerId
     ?? (draftModel
       ? getProviderForModel(draftModel, plugin.settings as unknown as Record<string, unknown>)
@@ -1177,7 +1196,7 @@ export function initializeTabControllers(
         // ensureServiceInitialized re-runs the init path on next send
         const previousProviderId = tab.providerId;
         tab.lifecycleState = 'blank';
-        tab.draftModel = plugin.settings.model as string;
+        tab.draftModel = resolveBlankTabModel(plugin, previousProviderId);
         tab.conversationId = null;
         tab.serviceInitialized = false;
         tab.providerId = getTabProviderId(tab, plugin);

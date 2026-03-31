@@ -527,6 +527,45 @@ describe('Tab - Creation', () => {
       expect(tab.draftModel).toBe('gpt-5.4');
       expect(tab.providerId).toBe('codex');
     });
+
+    it('should resolve draft model from defaultProviderId via projection', () => {
+      const plugin = createMockPlugin();
+      // Top-level model is Claude, but Codex has its own saved model
+      plugin.settings.model = 'claude-sonnet-4-5';
+      plugin.settings.settingsProvider = 'claude';
+      plugin.settings.savedProviderModel = { claude: 'claude-sonnet-4-5', codex: 'gpt-5.4' };
+
+      const tab = createTab(createMockOptions({ plugin, defaultProviderId: 'codex' }));
+
+      expect(tab.lifecycleState).toBe('blank');
+      expect(tab.draftModel).toBe('gpt-5.4');
+      expect(tab.providerId).toBe('codex');
+    });
+
+    it('should resolve draft model for Claude when defaultProviderId is claude', () => {
+      const plugin = createMockPlugin();
+      // Simulate settings where top-level model drifted to a codex value
+      plugin.settings.model = 'gpt-5.4-mini';
+      plugin.settings.settingsProvider = 'claude';
+      plugin.settings.savedProviderModel = { claude: 'opus', codex: 'gpt-5.4-mini' };
+
+      const tab = createTab(createMockOptions({ plugin, defaultProviderId: 'claude' }));
+
+      expect(tab.lifecycleState).toBe('blank');
+      expect(tab.draftModel).toBe('opus');
+      expect(tab.providerId).toBe('claude');
+    });
+
+    it('should fall back to settings.model when no defaultProviderId is given', () => {
+      const plugin = createMockPlugin();
+      plugin.settings.model = 'opus';
+
+      const tab = createTab(createMockOptions({ plugin }));
+
+      expect(tab.lifecycleState).toBe('blank');
+      expect(tab.draftModel).toBe('opus');
+      expect(tab.providerId).toBe('claude');
+    });
   });
 });
 
@@ -880,8 +919,37 @@ describe('Tab - Service Initialization', () => {
 
       expect(tab.lifecycleState).toBe('blank');
       expect(tab.conversationId).toBeNull();
-      expect(tab.draftModel).toBe(plugin.settings.model);
+      // Draft model is resolved via provider projection, not raw settings.model
+      expect(tab.draftModel).toBe(plugin.settings.savedProviderModel.claude);
       expect(tab.serviceInitialized).toBe(false);
+    });
+
+    it('preserves codex provider on new session when tab was codex', () => {
+      jest.spyOn(ProviderRegistry, 'createInstructionRefineService').mockReturnValue({ cancel: jest.fn(), resetConversation: jest.fn() } as any);
+      jest.spyOn(ProviderRegistry, 'createTitleGenerationService').mockReturnValue({ cancel: jest.fn() } as any);
+      jest.spyOn(ProviderRegistry, 'getTaskResultInterpreter').mockReturnValue({} as any);
+
+      const plugin = createMockPlugin();
+      plugin.settings.savedProviderModel = { claude: 'claude-sonnet-4-5', codex: 'gpt-5.4' };
+      const tab = createTab(createMockOptions({ plugin }));
+      initializeTabUI(tab, plugin);
+      initializeTabControllers(tab, plugin, {} as any, createMockMcpManager());
+
+      // Simulate a bound Codex tab
+      tab.lifecycleState = 'bound_cold';
+      tab.conversationId = 'conv-1';
+      tab.providerId = 'codex';
+
+      const convCtrlModule = jest.requireMock('@/features/chat/controllers/ConversationController') as {
+        ConversationController: jest.Mock;
+      };
+      const callback = convCtrlModule.ConversationController.mock.calls.at(-1)?.[1]?.onNewConversation;
+
+      callback();
+
+      expect(tab.lifecycleState).toBe('blank');
+      expect(tab.draftModel).toBe('gpt-5.4');
+      expect(tab.providerId).toBe('codex');
     });
   });
 });
