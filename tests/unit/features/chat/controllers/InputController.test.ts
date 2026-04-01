@@ -1117,14 +1117,14 @@ describe('InputController - Message Queue', () => {
       (ResumeSessionDropdown as jest.Mock).mockImplementation(() => mockDropdownInstance);
     });
 
-    it('should reject /resume on codex tabs', async () => {
+    it('should reject /resume when the provider lacks native history support', async () => {
       deps.getAgentService = () => ({
         ...(deps as any).mockAgentService,
         providerId: 'codex',
         getCapabilities: jest.fn().mockReturnValue({
           providerId: 'codex',
           supportsPersistentRuntime: true,
-          supportsNativeHistory: true,
+          supportsNativeHistory: false,
           supportsPlanMode: false,
           supportsRewind: false,
           supportsFork: false,

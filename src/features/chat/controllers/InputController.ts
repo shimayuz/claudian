@@ -1088,9 +1088,9 @@ export class InputController {
 
   private async executeBuiltInCommand(command: BuiltInCommand, args: string): Promise<void> {
     const { conversationController } = this.deps;
-    const providerId = this.getActiveCapabilities().providerId;
+    const capabilities = this.getActiveCapabilities();
 
-    if (!isBuiltInCommandSupported(command, providerId)) {
+    if (!isBuiltInCommandSupported(command, capabilities)) {
       new Notice(`/${command.name} is not supported by this provider.`);
       return;
     }
