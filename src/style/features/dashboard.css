@@ -56,3 +56,32 @@
 .claudian-badge-orange { background: rgba(217,119,87,0.15); color: #D97757; }
 .claudian-badge-green { background: rgba(100,200,120,0.15); color: var(--color-green); }
 .claudian-badge-red { background: rgba(255,80,80,0.15); color: var(--color-red); }
+
+/* ── TaskChute Section ── */
+.claudian-tc-section { border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 12px; background: var(--background-secondary); }
+.claudian-tc-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.claudian-tc-date { font-weight: 600; font-size: 13px; }
+.claudian-tc-progress-text { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+
+.claudian-tc-bar { height: 6px; background: var(--background-modifier-border); border-radius: 3px; margin-bottom: 10px; overflow: hidden; }
+.claudian-tc-bar-fill { height: 100%; background: var(--interactive-accent); border-radius: 3px; transition: width 0.5s ease; }
+
+.claudian-tc-running {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 10px;
+  background: rgba(var(--interactive-accent-rgb), 0.1); border: 1px solid var(--interactive-accent);
+  border-radius: 6px; font-size: 13px;
+}
+.claudian-tc-running-icon { display: flex; color: var(--interactive-accent); }
+.claudian-tc-running-title { font-weight: 600; flex: 1; }
+.claudian-tc-running-time { font-family: var(--font-monospace); font-size: 12px; color: var(--text-muted); }
+
+.claudian-tc-list { display: flex; flex-direction: column; gap: 2px; }
+.claudian-tc-row {
+  display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; font-size: 12px;
+}
+.claudian-tc-row:hover { background: var(--background-modifier-hover); }
+.claudian-tc-row-active { background: rgba(var(--interactive-accent-rgb), 0.06); }
+.claudian-tc-row-done { opacity: 0.6; }
+.claudian-tc-status { width: 20px; text-align: center; flex-shrink: 0; }
+.claudian-tc-time { font-family: var(--font-monospace); color: var(--text-muted); width: 42px; flex-shrink: 0; }
+.claudian-tc-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
