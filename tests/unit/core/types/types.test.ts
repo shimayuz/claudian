@@ -131,6 +131,8 @@ describe('types.ts', () => {
         openInMainTab: false,
         hiddenSlashCommands: [],
         effortLevel: 'high',
+        tmuxPollInterval: 5000,
+        automationPollInterval: 10000,
       };
 
       expect(settings.enableBlocklist).toBe(false);
@@ -173,6 +175,8 @@ describe('types.ts', () => {
         openInMainTab: false,
         hiddenSlashCommands: [],
         effortLevel: 'high',
+        tmuxPollInterval: 5000,
+        automationPollInterval: 10000,
       };
 
       expect(settings.model).toBe('anthropic/custom-model-v1');
@@ -215,6 +219,8 @@ describe('types.ts', () => {
         openInMainTab: false,
         hiddenSlashCommands: [],
         effortLevel: 'high',
+        tmuxPollInterval: 5000,
+        automationPollInterval: 10000,
       };
 
       expect(settings.lastClaudeModel).toBe('opus');

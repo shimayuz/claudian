@@ -299,6 +299,10 @@ export interface ClaudianSettings {
 
   // Slash commands
   hiddenSlashCommands: string[];  // Command names to hide from dropdown (user preference)
+
+  // Dashboard settings
+  tmuxPollInterval: number;  // ms between tmux status polls (default 5000)
+  automationPollInterval: number;  // ms between automation status polls (default 10000)
 }
 
 /** Default Claudian-specific settings. */
@@ -365,6 +369,10 @@ export const DEFAULT_SETTINGS: ClaudianSettings = {
 
   // Slash commands
   hiddenSlashCommands: [],  // No commands hidden by default
+
+  // Dashboard
+  tmuxPollInterval: 5000,
+  automationPollInterval: 10000,
 };
 
 /** Default CC-compatible settings. */

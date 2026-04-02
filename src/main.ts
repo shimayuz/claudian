@@ -36,6 +36,10 @@ import {
   VIEW_TYPE_CLAUDIAN,
 } from './core/types';
 import { ClaudianView } from './features/chat/ClaudianView';
+import { VIEW_TYPE_TMUX } from './features/dashboard/types';
+import { VIEW_TYPE_AUTOMATION } from './features/dashboard/types';
+import { TmuxView } from './features/dashboard/tmux/TmuxView';
+import { AutomationView } from './features/dashboard/automation/AutomationView';
 import { type InlineEditContext, InlineEditModal } from './features/inline-edit/ui/InlineEditModal';
 import { ClaudianSettingTab } from './features/settings/ClaudianSettings';
 import { setLocale } from './i18n';
@@ -219,6 +223,16 @@ export default class ClaudianPlugin extends Plugin {
       (leaf) => new ClaudianView(leaf, this)
     );
 
+    // Dashboard views
+    this.registerView(
+      VIEW_TYPE_TMUX,
+      (leaf) => new TmuxView(leaf, this.settings.tmuxPollInterval ?? 5000)
+    );
+    this.registerView(
+      VIEW_TYPE_AUTOMATION,
+      (leaf) => new AutomationView(leaf, this.settings.automationPollInterval ?? 10000)
+    );
+
     this.addRibbonIcon('bot', 'Open Claudian', () => {
       this.activateView();
     });
@@ -229,6 +243,18 @@ export default class ClaudianPlugin extends Plugin {
       callback: () => {
         this.activateView();
       },
+    });
+
+    this.addCommand({
+      id: 'open-tmux-dashboard',
+      name: 'Open tmux dashboard',
+      callback: () => { void this.activateDashboard(VIEW_TYPE_TMUX); },
+    });
+
+    this.addCommand({
+      id: 'open-automation-dashboard',
+      name: 'Open automation dashboard',
+      callback: () => { void this.activateDashboard(VIEW_TYPE_AUTOMATION); },
     });
 
     this.addCommand({
@@ -368,6 +394,19 @@ export default class ClaudianPlugin extends Plugin {
     if (leaf) {
       workspace.revealLeaf(leaf);
     }
+  }
+
+  async activateDashboard(viewType: string) {
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(viewType)[0];
+    if (!leaf) {
+      const newLeaf = workspace.getLeaf('tab');
+      if (newLeaf) {
+        await newLeaf.setViewState({ type: viewType, active: true });
+        leaf = newLeaf;
+      }
+    }
+    if (leaf) workspace.revealLeaf(leaf);
   }
 
   /** Loads settings and conversations from persistent storage. */
